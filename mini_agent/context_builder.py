@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+from .types import Message, Observation
+
+
+class ContextBuilder:
+    def build(
+        self,
+        user_input: str,
+        memory: list[str],
+        skills: list[str],
+        observations: list[Observation],
+    ) -> list[Message]:
+        messages = [
+            Message(
+                role="system",
+                content=(
+                    "You are a DevOps assistant. Use tools when fresh runtime "
+                    "state is needed. Do not claim that a tool action completed "
+                    "unless a tool observation confirms it."
+                ),
+            )
+        ]
+
+        if skills:
+            messages.append(Message(role="system", content="Relevant skills:\n" + "\n".join(skills)))
+
+        if memory:
+            messages.append(Message(role="system", content="Memory:\n" + "\n".join(memory)))
+
+        messages.append(Message(role="user", content=user_input))
+
+        for observation in observations:
+            messages.append(
+                Message(
+                    role="tool",
+                    name=observation.tool_name,
+                    content=observation.content,
+                )
+            )
+
+        return messages
+

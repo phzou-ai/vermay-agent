@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, Literal
+
+
+MessageRole = Literal["system", "user", "assistant", "tool"]
+
+
+@dataclass
+class Message:
+    role: MessageRole
+    content: str
+    name: str | None = None
+
+
+@dataclass
+class ToolCall:
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ToolSpec:
+    name: str
+    description: str
+    parameters: dict[str, Any]
+    dangerous: bool
+    func: Callable[..., Any]
+
+
+@dataclass
+class ToolResult:
+    name: str
+    ok: bool
+    output: Any = None
+    error: str | None = None
+
+
+@dataclass
+class Observation:
+    tool_name: str
+    content: str
+    ok: bool
+
+
+@dataclass
+class PermissionDecision:
+    allowed: bool
+    requires_approval: bool
+    reason: str
+
+
+@dataclass
+class ModelResponse:
+    content: str
+    tool_call: ToolCall | None = None
+
+    @property
+    def has_tool_call(self) -> bool:
+        return self.tool_call is not None
+
