@@ -16,6 +16,9 @@ class ObservationHandler:
 
     def _format_output(self, output: object) -> str:
         if isinstance(output, str):
-            return output[:4000]
-        return json.dumps(output, ensure_ascii=False, indent=2)[:4000]
-
+            text = output
+        else:
+            text = json.dumps(output, ensure_ascii=False, indent=2)
+        if len(text) > 4000:
+            return text[:4000] + "\n...<truncated>"
+        return text
