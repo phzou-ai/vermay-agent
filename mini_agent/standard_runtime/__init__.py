@@ -7,9 +7,11 @@ reference baseline for harness mechanics.
 
 from .graph import build_standard_graph
 from .nodes import StandardGraphComponents, StandardModelClient
+from .runner import StandardLangGraphAgentRuntime
 from .state import StandardAgentState, build_initial_state
 
 __all__ = [
+    "StandardLangGraphAgentRuntime",
     "StandardAgentState",
     "StandardGraphComponents",
     "StandardModelClient",

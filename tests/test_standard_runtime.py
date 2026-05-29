@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from mini_agent.standard_runtime.graph import build_standard_graph
 from mini_agent.standard_runtime.nodes import StandardGraphComponents
 from mini_agent.standard_runtime.routing import latest_ai_message, route_after_model, route_loop_limit
+from mini_agent.standard_runtime.runner import StandardLangGraphAgentRuntime
 from mini_agent.standard_runtime.state import build_initial_state
 
 
@@ -73,3 +74,24 @@ def test_standard_graph_appends_ai_message_with_add_messages():
     assert isinstance(output["messages"][-1], AIMessage)
     assert model.calls[0][0][0].content == "system prompt"
     assert model.calls[0][0][1].content == "hello"
+
+
+def test_standard_runtime_returns_run_result_for_final_answer():
+    model = FakeStandardModel(AIMessage(content="final answer"))
+    runtime = StandardLangGraphAgentRuntime(model=model, system_prompt="system prompt", max_loops=3)
+
+    result = runtime.start("hello", thread_id="thread-test")
+
+    assert result.thread_id == "thread-test"
+    assert result.status == "completed"
+    assert result.final_answer == "final answer"
+    assert result.to_output() == "final answer"
+    assert len(result.state["messages"]) == 3
+    assert model.calls[0][0][0].content == "system prompt"
+    assert model.calls[0][0][1].content == "hello"
+
+
+def test_standard_runtime_run_returns_final_answer():
+    runtime = StandardLangGraphAgentRuntime(model=FakeStandardModel(AIMessage(content="final answer")))
+
+    assert runtime.run("hello") == "final answer"
