@@ -103,7 +103,11 @@ traces/langgraph_checkpoints.sqlite
 
 ## Observability
 
-Human-readable progress is enabled by default and written to stderr.
+The CLI has two terminal-facing reporters.
+
+`ProgressReporter` is enabled by default and writes a compact harness transcript to stderr. It is intended for normal CLI use and shows each agent loop as readable event blocks: context build, model call, tool call, permission check, tool result, observation, and final answer.
+
+`GraphStreamReporter` is disabled by default. It is enabled only with `--graph-stream` or `--graph-stream-mode`, and is intended for inspecting LangGraph runtime stream chunks such as `updates`, `custom`, `values`, and `debug`. Enabling graph stream inspection suppresses the default progress transcript so graph-level events and harness-level events do not interleave.
 
 Disable progress output:
 
@@ -116,7 +120,6 @@ Enable LangGraph stream inspection:
 ```bash
 mini-agent "grep nginx errors" --graph-stream
 mini-agent "grep nginx errors" --graph-stream-mode updates,custom,debug
-mini-agent "grep nginx errors" --graph-stream-mode updates --graph-stream-mode values --no-progress
 ```
 
 Machine-readable traces are written to:

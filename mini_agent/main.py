@@ -82,7 +82,7 @@ def main() -> None:
     parser.add_argument(
         "--graph-stream",
         action="store_true",
-        help="Show concise LangGraph stream events in addition to harness progress logs",
+        help="Show concise LangGraph stream debug events instead of harness progress logs",
     )
     parser.add_argument(
         "--graph-stream-mode",
@@ -94,6 +94,7 @@ def main() -> None:
 
     user_input = " ".join(args.prompt).strip() or "check cluster status"
     use_graph_stream = args.graph_stream or args.graph_stream_mode is not None
+    show_progress = not args.no_progress and not use_graph_stream
 
     runtime = build_langgraph_runtime(
         trace_name=args.trace,
@@ -101,7 +102,7 @@ def main() -> None:
         ollama_base_url=args.ollama_base_url,
         ollama_timeout_seconds=args.ollama_timeout_seconds,
         max_steps=args.max_steps,
-        show_progress=not args.no_progress,
+        show_progress=show_progress,
         show_graph_stream=use_graph_stream,
     )
     if args.resume_approval is not None:

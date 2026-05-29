@@ -20,7 +20,7 @@
 - `nodes.py`: graph node implementations that call the shared harness components.
 - `routing.py`: conditional edge routing functions.
 - `state.py`: graph state shape.
-- `streaming.py`: summarized graph stream reporting.
+- `streaming.py`: optional LangGraph stream inspection and summarized graph stream reporting.
 - `toolnode_adapter.py`: adapters between project tool types and LangChain/LangGraph tool message types; not part of the active runtime path yet.
 - `adapters.py`: payload conversion helpers for trace and progress output.
 
@@ -35,7 +35,7 @@
 - `observation.py`: converts tool results into model-readable observations.
 - `result_summary.py`: shared summary helpers for terminal progress output.
 - `trace.py`: writes JSONL runtime events.
-- `progress.py`: renders human-readable terminal progress.
+- `progress.py`: renders the default human-readable harness progress transcript.
 - `memory.py`: minimal file-backed memory placeholder.
 - `types.py`: shared dataclasses for messages, tools, results, observations, and model responses.
 

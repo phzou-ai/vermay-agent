@@ -21,7 +21,7 @@ In this project, harness means the engineering layer around the model that turns
 The model may produce an action such as:
 
 ```json
-{"action":"tool_call","name":"weather_forecast","arguments":{"location":"Shanghai"}}
+{"action":"tool_call","name":"weather_forecast","arguments":{"location":"Beijing"}}
 ```
 
 The harness is responsible for:
@@ -54,10 +54,22 @@ python -m pip install -e .
 ## Run
 
 ```bash
-mini-agent "weather forecast for Shanghai"
+mini-agent "weather forecast for Beijing"
 ```
 
 The CLI uses the LangGraph runtime in `mini_agent/langgraph_runtime/`.
+
+By default, the CLI prints a compact harness progress transcript to stderr. This is produced by `ProgressReporter` and shows each agent loop as readable event blocks: context build, model call, tool call, permission check, tool result, observation, and final answer.
+
+LangGraph stream inspection is separate and disabled by default. `GraphStreamReporter` is enabled only with `--graph-stream` or `--graph-stream-mode`; it summarizes LangGraph runtime chunks such as `updates`, `custom`, `values`, and `debug`. When graph stream inspection is enabled, the default progress transcript is suppressed so the two reporter layers do not interleave.
+
+```bash
+# default harness progress
+mini-agent "weather forecast for Beijing"
+
+# LangGraph stream debug inspection
+mini-agent "weather forecast for Beijing" --graph-stream
+```
 
 ## Model Client
 
@@ -74,7 +86,11 @@ MINI_AGENT_OLLAMA_TIMEOUT_SECONDS=120
 CLI override example:
 
 ```bash
-mini-agent "weather forecast for Shanghai" \
+# default model configuration
+mini-agent "weather forecast for Beijing"
+
+# override model client settings
+mini-agent "weather forecast for Beijing" \
   --ollama-model qwen3.6:27b \
   --ollama-base-url http://127.0.0.1:11434 \
   --ollama-timeout-seconds 120
