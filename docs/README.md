@@ -20,3 +20,5 @@ The project is positioned as an agent validation and practice workbench. It is i
 Repository docs should describe the current project and its stable module boundaries.
 
 Historical planning notes, batch implementation records, and broader roadmap material are kept outside this repository in the companion `mini-agent-docs` workspace.
+
+Archived implementation material retained in this repository is kept under `archive/` and is not part of the active runtime or default test suite.

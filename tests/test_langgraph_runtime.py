@@ -1,454 +1,432 @@
 from __future__ import annotations
 
-from pathlib import Path
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from pydantic import Field
 
-from mini_agent.context_builder import ContextBuilder
-from mini_agent.memory import MemoryStore
-from mini_agent.observation import ObservationHandler
+from mini_agent.model_clients import OllamaModelClient
 from mini_agent.permission import PermissionGate
-from mini_agent.tool_executor import ToolExecutor
+from mini_agent.progress import ProgressReporter
+from mini_agent.langgraph_runtime import ModelInvocation, OllamaModelAdapter
+from mini_agent.langgraph_runtime.graph import build_graph
+from mini_agent.langgraph_runtime.model_factory import ModelConfig, build_model_client
+from mini_agent.langgraph_runtime.nodes import GraphComponents
+from mini_agent.langgraph_runtime.routing import (
+    latest_ai_message,
+    route_after_approval,
+    route_after_model,
+    route_after_permission,
+    route_loop_limit,
+)
+from mini_agent.langgraph_runtime.runner import LangGraphAgentRuntime
+from mini_agent.langgraph_runtime.state import build_initial_state
+from mini_agent.tooling import ToolArgs, structured_tool
 from mini_agent.tool_registry import ToolRegistry
 from mini_agent.trace import TraceLogger
-from mini_agent.types import Message, ModelResponse, ToolCall, ToolSpec
-from mini_agent.langgraph_runtime import LangGraphAgentRuntime
-from mini_agent.langgraph_runtime.results import RunResult
-from mini_agent.langgraph_runtime.routing import route_after_approval, route_after_model, route_after_permission, route_after_step
-from mini_agent.langgraph_runtime.streaming import parse_stream_modes, summarize_stream_chunk
-from mini_agent.main import run_with_interactive_approval
+
+
+class EchoArgs(ToolArgs):
+    value: str = Field(description="Value to echo.")
+
+
+class EmptyArgs(ToolArgs):
+    pass
 
 
 class FakeModel:
-    def __init__(self, responses: list[ModelResponse]) -> None:
-        self.responses = responses
-        self.calls: list[list[Message]] = []
+    def __init__(self, responses: AIMessage | list[AIMessage]) -> None:
+        self.responses = responses if isinstance(responses, list) else [responses]
+        self.calls = []
 
-    def invoke(self, messages: list[Message], tools: list[dict]) -> ModelResponse:
-        self.calls.append(messages)
-        return self.responses.pop(0)
+    def invoke(self, messages, tools):
+        self.calls.append((messages, tools))
+        return ModelInvocation(message=self.responses.pop(0))
 
 
-def build_test_runtime(tmp_path: Path, model: FakeModel, max_steps: int = 5) -> LangGraphAgentRuntime:
-    registry = ToolRegistry()
-    registry.register(
-        ToolSpec(
-            name="echo",
-            description="Echo test value.",
-            parameters={
-                "type": "object",
-                "properties": {"value": {"type": "string"}},
-                "required": ["value"],
-            },
-            dangerous=False,
-            func=lambda value: {"value": value},
+class FakeProjectModelClient:
+    def __init__(self, response) -> None:
+        self.response = response
+        self.calls = []
+
+    def invoke(self, messages, tools):
+        self.calls.append((messages, tools))
+        return self.response
+
+
+def make_echo_tool():
+    return structured_tool(
+        func=lambda value: {"value": value},
+        name="echo",
+        description="Echo a value.",
+        args_schema=EchoArgs,
+        dangerous=False,
+    )
+
+
+def make_dangerous_tool(executed: dict[str, bool]):
+    return structured_tool(
+        func=lambda: executed.__setitem__("value", True) or {"executed": True},
+        name="dangerous",
+        description="Dangerous tool.",
+        args_schema=EmptyArgs,
+        dangerous=True,
+    )
+
+
+def test_langgraph_initial_state_uses_langchain_messages():
+    state = build_initial_state("hello", system_prompt="system prompt", max_loops=3)
+
+    assert isinstance(state["messages"][0], SystemMessage)
+    assert isinstance(state["messages"][1], HumanMessage)
+    assert state["messages"][0].content == "system prompt"
+    assert state["messages"][1].content == "hello"
+    assert state["loop_index"] == 1
+    assert state["max_loops"] == 3
+    assert state["final_answer"] is None
+
+
+def test_langgraph_routing_detects_ai_message_tool_calls():
+    state = build_initial_state("weather")
+    state["messages"].append(
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "weather_forecast",
+                    "args": {"location": "Shanghai"},
+                    "id": "call-1",
+                    "type": "tool_call",
+                }
+            ],
         )
     )
-    registry.register(
-        ToolSpec(
-            name="dangerous",
-            description="Dangerous test tool.",
-            parameters={"type": "object", "properties": {}},
-            dangerous=True,
-            func=lambda: {"executed": True},
-        )
+
+    assert latest_ai_message(state["messages"]) is state["messages"][-1]
+    assert route_after_model(state) == "tool_calls"
+
+
+def test_langgraph_routing_detects_final_answer():
+    state = build_initial_state("hello")
+    state["messages"].append(AIMessage(content="final answer"))
+
+    assert route_after_model(state) == "final"
+
+
+def test_langgraph_loop_limit_uses_loop_index():
+    assert route_loop_limit({**build_initial_state("hello", max_loops=2), "loop_index": 2}) == "continue"
+    assert route_loop_limit({**build_initial_state("hello", max_loops=2), "loop_index": 3}) == "max_loops"
+
+
+def test_langgraph_permission_routing():
+    assert route_after_permission({**build_initial_state("hello"), "permission": {"status": "allowed"}}) == "allowed"
+    assert (
+        route_after_permission({**build_initial_state("hello"), "permission": {"status": "approval_required"}})
+        == "approval_required"
     )
-
-    return LangGraphAgentRuntime(
-        model=model,
-        registry=registry,
-        context_builder=ContextBuilder(),
-        permission_gate=PermissionGate(registry),
-        tool_executor=ToolExecutor(registry),
-        observation_handler=ObservationHandler(),
-        memory=MemoryStore(tmp_path / "memory.txt"),
-        trace=TraceLogger(tmp_path / "trace.jsonl"),
-        max_steps=max_steps,
-    )
+    assert route_after_permission({**build_initial_state("hello"), "permission": {"status": "denied"}}) == "denied"
 
 
-def test_langgraph_runtime_runs_safe_tool_then_final_answer(tmp_path: Path):
-    model = FakeModel(
-        [
-            ModelResponse(content="Calling tool echo.", tool_call=ToolCall(name="echo", arguments={"value": "hello"})),
-            ModelResponse(content="final answer"),
-        ]
-    )
-    runtime = build_test_runtime(tmp_path, model)
-
-    answer = runtime.run("say hello")
-
-    assert answer == "final answer"
-    assert len(model.calls) == 2
-    assert [message.role for message in model.calls[1]] == ["system", "user", "tool"]
-    assert model.calls[1][-1].name == "echo"
-    assert '"value": "hello"' in model.calls[1][-1].content
+def test_langgraph_approval_routing():
+    assert route_after_approval({**build_initial_state("hello"), "approval": {"approved": True}}) == "approved"
+    assert route_after_approval({**build_initial_state("hello"), "approval": {"approved": False}}) == "rejected"
+    assert route_after_approval(build_initial_state("hello")) == "rejected"
 
 
-def test_langgraph_runtime_start_returns_run_result_for_final_answer(tmp_path: Path):
-    model = FakeModel([ModelResponse(content="final answer")])
-    runtime = build_test_runtime(tmp_path, model)
+def test_langgraph_graph_appends_ai_message_with_add_messages():
+    model = FakeModel(AIMessage(content="final answer"))
+    graph = build_graph(GraphComponents(model=model, tools=[]))
 
-    result = runtime.start("say hello")
+    output = graph.invoke(build_initial_state("hello", system_prompt="system prompt"))
 
-    assert result.thread_id
-    assert result.final_answer == "final answer"
-    assert result.interrupt is None
-    assert result.interrupt_message is None
-    assert result.stop_message is None
-    assert result.to_output() == "final answer"
+    assert output["final_answer"] == "final answer"
+    assert len(output["messages"]) == 3
+    assert isinstance(output["messages"][-1], AIMessage)
+    assert model.calls[0][0][0].content == "system prompt"
+    assert model.calls[0][0][1].content == "hello"
+
+
+def test_langgraph_runtime_returns_run_result_for_final_answer():
+    model = FakeModel(AIMessage(content="final answer"))
+    runtime = LangGraphAgentRuntime(model=model, system_prompt="system prompt", max_loops=3)
+
+    result = runtime.start("hello", thread_id="thread-test")
+
+    assert result.thread_id == "thread-test"
     assert result.status == "completed"
-    assert result.to_dict() == {
-        "thread_id": result.thread_id,
-        "status": "completed",
-        "final_answer": "final answer",
-        "interrupt": None,
-        "interrupt_message": None,
-        "stop_message": None,
-    }
+    assert result.final_answer == "final answer"
+    assert result.to_output() == "final answer"
+    assert len(result.state["messages"]) == 3
+    assert model.calls[0][0][0].content == "system prompt"
+    assert model.calls[0][0][1].content == "hello"
 
 
-def test_langgraph_runtime_streams_safe_tool_then_final_answer(tmp_path: Path):
+def test_langgraph_runtime_run_returns_final_answer():
+    runtime = LangGraphAgentRuntime(model=FakeModel(AIMessage(content="final answer")))
+
+    assert runtime.run("hello") == "final answer"
+
+
+def test_langgraph_graph_executes_safe_tool_with_toolnode_then_calls_model_again():
     model = FakeModel(
         [
-            ModelResponse(content="Calling tool echo.", tool_call=ToolCall(name="echo", arguments={"value": "hello"})),
-            ModelResponse(content="final answer"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "echo",
+                        "args": {"value": "hello"},
+                        "id": "call-echo",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="tool completed"),
         ]
     )
-    runtime = build_test_runtime(tmp_path, model)
+    tool = make_echo_tool()
+    graph = build_graph(GraphComponents(model=model, tools=[tool]))
 
-    answer = runtime.run("say hello", stream_modes=("updates", "values", "custom"))
+    output = graph.invoke(build_initial_state("echo hello"))
 
-    assert answer == "final answer"
+    assert output["final_answer"] == "tool completed"
     assert len(model.calls) == 2
+    assert any(isinstance(message, ToolMessage) for message in output["messages"])
+    tool_message = next(message for message in output["messages"] if isinstance(message, ToolMessage))
+    assert tool_message.name == "echo"
+    assert tool_message.tool_call_id == "call-echo"
+    assert tool_message.status == "success"
+    assert tool_message.content == '{"value": "hello"}'
+    assert isinstance(model.calls[1][0][-1], ToolMessage)
 
 
-def test_langgraph_runtime_streams_approval_interrupt(tmp_path: Path):
+def test_langgraph_runtime_executes_safe_tool_with_toolnode():
     model = FakeModel(
         [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "echo",
+                        "args": {"value": "hello"},
+                        "id": "call-echo",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="tool completed"),
         ]
     )
-    runtime = build_test_runtime(tmp_path, model)
+    tool = make_echo_tool()
+    runtime = LangGraphAgentRuntime(model=model, tools=[tool])
 
-    answer = runtime.run("run dangerous action", stream_modes=("updates", "custom"))
+    result = runtime.start("echo hello", thread_id="thread-safe-tool")
 
-    assert answer.startswith("Approval required for tool 'dangerous': tool 'dangerous' is marked dangerous")
-    assert "thread_id:" in answer
+    assert result.thread_id == "thread-safe-tool"
+    assert result.status == "completed"
+    assert result.final_answer == "tool completed"
+    assert any(isinstance(message, ToolMessage) for message in result.state["messages"])
 
 
-def test_langgraph_runtime_start_returns_run_result_for_approval_interrupt(tmp_path: Path):
+def test_langgraph_runtime_interrupts_dangerous_tool_before_toolnode():
+    executed = {"value": False}
+    registry = ToolRegistry()
+    tool = make_dangerous_tool(executed)
+    registry.register(tool)
     model = FakeModel(
-        [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-        ]
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "dangerous",
+                    "args": {},
+                    "id": "call-dangerous",
+                    "type": "tool_call",
+                }
+            ],
+        )
     )
-    runtime = build_test_runtime(tmp_path, model)
+    runtime = LangGraphAgentRuntime(
+        model=model,
+        tools=[tool],
+        permission_gate=PermissionGate(registry),
+    )
 
-    result = runtime.start("run dangerous action")
+    result = runtime.start("run dangerous", thread_id="thread-dangerous")
 
-    assert result.thread_id
+    assert result.status == "interrupted"
     assert result.final_answer is None
-    assert result.interrupt is not None
-    assert isinstance(result.interrupt, dict)
-    assert result.interrupt["tool_call"]["name"] == "dangerous"
-    assert result.interrupt_message is not None
-    assert result.interrupt_message.startswith("Approval required for tool 'dangerous'")
-    assert result.to_output() == result.interrupt_message
-    payload = result.to_dict()
-    assert payload["status"] == "interrupted"
-    assert payload["interrupt"]["tool_call"]["name"] == "dangerous"
-    assert payload["interrupt_message"] == result.interrupt_message
-    assert not hasattr(runtime, "_pending_interrupt_message")
-    assert not hasattr(runtime, "thread_id")
+    assert result.interrupt["kind"] == "approval_required"
+    assert result.interrupt["permission"]["reason"] == "tool 'dangerous' is marked dangerous"
+    assert result.interrupt_message.startswith("Approval required for tool call")
+    assert executed["value"] is False
 
 
-def test_langgraph_runtime_stops_for_dangerous_tool_approval(tmp_path: Path):
+def test_langgraph_runtime_resumes_approved_dangerous_tool():
+    executed = {"value": False}
+    registry = ToolRegistry()
+    tool = make_dangerous_tool(executed)
+    registry.register(tool)
     model = FakeModel(
         [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "dangerous",
+                        "args": {},
+                        "id": "call-dangerous",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="dangerous completed"),
         ]
     )
-    runtime = build_test_runtime(tmp_path, model)
-
-    answer = runtime.run("run dangerous action")
-
-    assert answer.startswith("Approval required for tool 'dangerous': tool 'dangerous' is marked dangerous")
-    assert "thread_id:" in answer
-    assert "--resume-approval true" in answer
-    assert len(model.calls) == 1
-
-
-def test_langgraph_runtime_resume_returns_run_result(tmp_path: Path):
-    model = FakeModel(
-        [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-            ModelResponse(content="dangerous completed"),
-        ]
+    runtime = LangGraphAgentRuntime(
+        model=model,
+        tools=[tool],
+        permission_gate=PermissionGate(registry),
     )
-    runtime = build_test_runtime(tmp_path, model)
 
-    interrupted = runtime.start("run dangerous action")
-    result = runtime.resume(thread_id=interrupted.thread_id, approved=True, reason="approved for test")
+    interrupted = runtime.start("run dangerous", thread_id="thread-dangerous-approved")
+    result = runtime.resume(interrupted.thread_id, approved=True, reason="approved for test")
 
-    assert result.thread_id == interrupted.thread_id
+    assert result.status == "completed"
     assert result.final_answer == "dangerous completed"
-    assert result.interrupt is None
-    assert result.interrupt_message is None
-    assert result.to_output() == "dangerous completed"
+    assert executed["value"] is True
+    assert any(isinstance(message, ToolMessage) for message in result.state["messages"])
+    assert result.state["approval"] == {"approved": True, "reason": "approved for test"}
 
 
-def test_langgraph_runtime_requires_thread_id_for_resume(tmp_path: Path):
-    model = FakeModel([])
-    runtime = build_test_runtime(tmp_path, model)
+def test_langgraph_runtime_resumes_rejected_dangerous_tool_without_execution():
+    executed = {"value": False}
+    registry = ToolRegistry()
+    tool = make_dangerous_tool(executed)
+    registry.register(tool)
+    model = FakeModel(
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "dangerous",
+                    "args": {},
+                    "id": "call-dangerous",
+                    "type": "tool_call",
+                }
+            ],
+        )
+    )
+    runtime = LangGraphAgentRuntime(
+        model=model,
+        tools=[tool],
+        permission_gate=PermissionGate(registry),
+    )
 
-    try:
-        runtime.resume(thread_id="", approved=True)
-    except ValueError as error:
-        assert str(error) == "thread_id is required to resume an approval interrupt"
-    else:
-        raise AssertionError("resume should require an explicit thread_id")
+    interrupted = runtime.start("run dangerous", thread_id="thread-dangerous-rejected")
+    result = runtime.resume(interrupted.thread_id, approved=False, reason="not allowed")
+
+    assert result.status == "completed"
+    assert result.final_answer == "Tool call rejected by approval: not allowed"
+    assert executed["value"] is False
+    assert not any(isinstance(message, ToolMessage) for message in result.state["messages"])
+    assert result.state["approval"] == {"approved": False, "reason": "not allowed"}
 
 
-def test_langgraph_runtime_resumes_approval_with_rejection(tmp_path: Path):
+def test_langgraph_runtime_progress_uses_langgraph_messages(capsys):
     model = FakeModel(
         [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "echo",
+                        "args": {"value": "hello"},
+                        "id": "call-echo",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="tool completed"),
         ]
     )
-    runtime = build_test_runtime(tmp_path, model)
+    tool = make_echo_tool()
+    runtime = LangGraphAgentRuntime(
+        model=model,
+        tools=[tool],
+        progress=ProgressReporter(enabled=True),
+    )
 
-    interrupted = runtime.start("run dangerous action")
-    answer = runtime.resume_approval(thread_id=interrupted.thread_id, approved=False, reason="not allowed")
+    result = runtime.start("echo hello", thread_id="thread-progress")
 
-    assert answer == "Tool call rejected by approval: not allowed"
-    assert len(model.calls) == 1
+    assert result.final_answer == "tool completed"
+    output = capsys.readouterr().err
+    assert "loop 1" in output
+    assert "context" in output
+    assert "tool_call" in output
+    assert "echo" in output
+    assert "result" in output
+    assert "observation" in output
+    assert "loop 2" in output
+    assert "done" in output
 
 
-def test_langgraph_runtime_resumes_approval_with_execution(tmp_path: Path):
+def test_langgraph_runtime_trace_uses_langgraph_messages(tmp_path):
     model = FakeModel(
         [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-            ModelResponse(content="dangerous completed"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "echo",
+                        "args": {"value": "hello"},
+                        "id": "call-echo",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="tool completed"),
         ]
     )
-    runtime = build_test_runtime(tmp_path, model)
-
-    interrupted = runtime.start("run dangerous action")
-    answer = runtime.resume_approval(thread_id=interrupted.thread_id, approved=True, reason="approved for test")
-
-    assert answer == "dangerous completed"
-    assert len(model.calls) == 2
-    assert '"executed": true' in model.calls[1][-1].content
-
-
-def test_cli_interactive_approval_rejection(tmp_path: Path):
-    model = FakeModel(
-        [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-        ]
-    )
-    runtime = build_test_runtime(tmp_path, model)
-    prompts: list[tuple[str, str]] = []
-
-    def reject(message: str, thread_id: str) -> tuple[bool, str]:
-        prompts.append((message, thread_id))
-        return False, "not allowed interactively"
-
-    answer = run_with_interactive_approval(runtime, "run dangerous action", reject)
-
-    assert answer == "Tool call rejected by approval: not allowed interactively"
-    assert len(prompts) == 1
-    assert prompts[0][0].startswith("Approval required for tool 'dangerous'")
-    assert prompts[0][1]
-    assert len(model.calls) == 1
-
-
-def test_cli_interactive_approval_execution(tmp_path: Path):
-    model = FakeModel(
-        [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-            ModelResponse(content="dangerous completed"),
-        ]
-    )
-    runtime = build_test_runtime(tmp_path, model)
-
-    answer = run_with_interactive_approval(
-        runtime,
-        "run dangerous action",
-        lambda message, thread_id: (True, "approved interactively"),
+    tool = make_echo_tool()
+    trace_path = tmp_path / "trace.jsonl"
+    runtime = LangGraphAgentRuntime(
+        model=model,
+        tools=[tool],
+        trace=TraceLogger(trace_path),
     )
 
-    assert answer == "dangerous completed"
-    assert len(model.calls) == 2
-    assert '"executed": true' in model.calls[1][-1].content
+    result = runtime.start("echo hello", thread_id="thread-trace")
+
+    assert result.final_answer == "tool completed"
+    trace = trace_path.read_text(encoding="utf-8")
+    assert '"type": "langgraph_run_started"' in trace
+    assert '"type": "langgraph_context_built"' in trace
+    assert '"type": "langgraph_model_response"' in trace
+    assert '"type": "langgraph_tool_execute_start"' in trace
+    assert '"type": "langgraph_tool_message"' in trace
+    assert '"type": "langgraph_run_finished"' in trace
 
 
-def test_cli_interactive_approval_uses_supplied_thread_id(tmp_path: Path):
-    model = FakeModel(
-        [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-            ModelResponse(content="dangerous completed"),
-        ]
+def test_ollama_adapter_returns_thin_ai_message_wrapper():
+    project_client = FakeProjectModelClient(
+        OllamaModelClient()._parse_content(
+            '{"action":"tool_call","name":"echo","arguments":{"value":"hello"}}'
+        )
     )
-    runtime = build_test_runtime(tmp_path, model)
-    prompts: list[tuple[str, str]] = []
-
-    def approve(message: str, thread_id: str) -> tuple[bool, str]:
-        prompts.append((message, thread_id))
-        return True, "approved interactively"
-
-    answer = run_with_interactive_approval(
-        runtime,
-        "run dangerous action",
-        approve,
-        thread_id="cli-session",
+    adapter = OllamaModelAdapter(
+        client=project_client,
+        tool_schemas=[{"name": "echo", "parameters": {}}],
     )
 
-    assert answer == "dangerous completed"
-    assert len(prompts) == 1
-    assert prompts[0][1] == "cli-session"
-    assert "thread_id: cli-session" in prompts[0][0]
+    response = adapter.invoke([SystemMessage(content="system"), HumanMessage(content="hello")], tools=[])
+
+    assert isinstance(response, ModelInvocation)
+    assert isinstance(response.message, AIMessage)
+    assert response.message.tool_calls[0]["name"] == "echo"
+    assert response.message.tool_calls[0]["args"] == {"value": "hello"}
+    assert project_client.calls[0][1] == [{"name": "echo", "parameters": {}}]
 
 
-def test_cli_interactive_approval_stops_after_round_limit(tmp_path: Path):
-    model = FakeModel(
-        [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-        ]
-    )
-    runtime = build_test_runtime(tmp_path, model)
-    prompts = 0
+def test_model_factory_builds_default_provider_adapter():
+    model = build_model_client(ModelConfig(provider="ollama"), tool_schemas=[])
 
-    def approve(message: str, thread_id: str) -> tuple[bool, str]:
-        nonlocal prompts
-        prompts += 1
-        return True, "approved interactively"
-
-    answer = run_with_interactive_approval(runtime, "run dangerous action", approve)
-
-    assert answer == "Stopped after 1 approval rounds."
-    assert prompts == 1
-    assert len(model.calls) == 2
-
-
-def test_langgraph_runtime_resumes_approval_from_sqlite_checkpoint(tmp_path: Path):
-    checkpoint_path = tmp_path / "checkpoints.sqlite"
-    first_model = FakeModel(
-        [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-        ]
-    )
-    first_runtime = build_test_runtime(tmp_path, first_model)
-    first_runtime.checkpoint_path = checkpoint_path
-    first_runtime.__post_init__()
-
-    first_runtime.run("run dangerous action", thread_id="approval-thread")
-
-    second_model = FakeModel([ModelResponse(content="resumed final")])
-    second_runtime = build_test_runtime(tmp_path, second_model)
-    second_runtime.checkpoint_path = checkpoint_path
-    second_runtime.__post_init__()
-
-    answer = second_runtime.resume_approval(thread_id="approval-thread", approved=True)
-
-    assert answer == "resumed final"
-    assert len(second_model.calls) == 1
-
-
-def test_langgraph_runtime_supports_multiple_explicit_threads_on_one_runtime(tmp_path: Path):
-    model = FakeModel(
-        [
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-            ModelResponse(content="Calling tool dangerous.", tool_call=ToolCall(name="dangerous")),
-            ModelResponse(content="session a final"),
-            ModelResponse(content="session b final"),
-        ]
-    )
-    runtime = build_test_runtime(tmp_path, model)
-
-    session_a = runtime.start("run dangerous action for a", thread_id="session-a")
-    session_b = runtime.start("run dangerous action for b", thread_id="session-b")
-    resumed_a = runtime.resume(thread_id=session_a.thread_id, approved=True, reason="approved a")
-    resumed_b = runtime.resume(thread_id=session_b.thread_id, approved=True, reason="approved b")
-
-    assert session_a.thread_id == "session-a"
-    assert session_b.thread_id == "session-b"
-    assert resumed_a.thread_id == "session-a"
-    assert resumed_a.final_answer == "session a final"
-    assert resumed_b.thread_id == "session-b"
-    assert resumed_b.final_answer == "session b final"
-    assert model.calls[2][1].content == "run dangerous action for a"
-    assert model.calls[3][1].content == "run dangerous action for b"
-    assert len(model.calls) == 4
-
-
-def test_langgraph_runtime_enforces_max_steps(tmp_path: Path):
-    model = FakeModel(
-        [
-            ModelResponse(content="Calling tool echo.", tool_call=ToolCall(name="echo", arguments={"value": "one"})),
-            ModelResponse(content="Calling tool echo.", tool_call=ToolCall(name="echo", arguments={"value": "two"})),
-        ]
-    )
-    runtime = build_test_runtime(tmp_path, model, max_steps=2)
-
-    answer = runtime.run("loop")
-
-    assert answer == "Stopped after max_steps=2"
-    assert len(model.calls) == 2
-
-
-def test_run_result_to_dict_can_include_safe_state_payload():
-    result = RunResult(
-        thread_id="state-session",
-        stop_message="stopped",
-        state={"tool_call": ToolCall(name="echo", arguments={"value": "hello"})},
-    )
-
-    assert result.status == "stopped"
-    assert result.to_dict(include_state=True) == {
-        "thread_id": "state-session",
-        "status": "stopped",
-        "final_answer": None,
-        "interrupt": None,
-        "interrupt_message": None,
-        "stop_message": "stopped",
-        "state": {"tool_call": {"name": "echo", "arguments": {"value": "hello"}}},
-    }
-
-
-def test_langgraph_routing_after_model():
-    assert route_after_model({"final_answer": "done", "tool_call": None}) == "final"
-    assert route_after_model({"final_answer": None, "tool_call": ToolCall(name="echo")}) == "tool_call"
-
-
-def test_langgraph_routing_after_permission():
-    class Decision:
-        def __init__(self, allowed: bool, requires_approval: bool) -> None:
-            self.allowed = allowed
-            self.requires_approval = requires_approval
-
-    assert route_after_permission({"permission_decision": Decision(True, False)}) == "allowed"
-    assert route_after_permission({"permission_decision": Decision(False, True)}) == "approval_required"
-    assert route_after_permission({"permission_decision": Decision(False, False)}) == "denied"
-    assert route_after_permission({"permission_decision": None}) == "denied"
-
-
-def test_langgraph_routing_after_approval():
-    assert route_after_approval({"approval_result": {"approved": True}}) == "approved"
-    assert route_after_approval({"approval_result": {"approved": False}}) == "rejected"
-    assert route_after_approval({"approval_result": None}) == "rejected"
-
-
-def test_langgraph_routing_after_step():
-    assert route_after_step({"step": 1, "max_steps": 2}) == "continue"
-    assert route_after_step({"step": 3, "max_steps": 2}) == "max_steps"
-
-
-def test_parse_stream_modes():
-    assert parse_stream_modes(None) == ("updates", "custom")
-    assert parse_stream_modes(["updates,values", "debug"]) == ("updates", "values", "debug")
-
-
-def test_summarize_stream_chunk():
-    assert summarize_stream_chunk("updates", {"call_model": {"tool_call": object()}}) == "call_model -> tool_call"
-    assert "step=2" in summarize_stream_chunk("values", {"step": 2, "messages": [], "observations": []})
+    assert isinstance(model, OllamaModelAdapter)

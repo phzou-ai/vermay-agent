@@ -1,20 +1,37 @@
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 
-from mini_agent.types import Message, Observation, PermissionDecision, ToolCall, ToolResult
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langgraph.graph.message import add_messages
 
 
 class AgentState(TypedDict):
-    user_input: str
-    messages: list[Message]
-    observations: list[Observation]
-    tool_call: ToolCall | None
-    permission_decision: PermissionDecision | None
-    approval_result: dict[str, Any] | None
-    tool_result: ToolResult | None
-    observation: Observation | None
+    messages: Annotated[list[BaseMessage], add_messages]
+    permission: dict[str, Any] | None
+    approval: dict[str, Any] | None
     final_answer: str | None
-    step: int
-    max_steps: int
+    loop_index: int
+    max_loops: int
     errors: list[dict[str, Any]]
+
+
+def build_initial_state(
+    user_input: str,
+    *,
+    system_prompt: str | None = None,
+    max_loops: int = 5,
+) -> AgentState:
+    messages: list[BaseMessage] = []
+    if system_prompt:
+        messages.append(SystemMessage(content=system_prompt))
+    messages.append(HumanMessage(content=user_input))
+    return {
+        "messages": messages,
+        "permission": None,
+        "approval": None,
+        "final_answer": None,
+        "loop_index": 1,
+        "max_loops": max_loops,
+        "errors": [],
+    }

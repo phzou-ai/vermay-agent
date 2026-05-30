@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 
 MessageRole = Literal["system", "user", "assistant", "tool"]
@@ -18,15 +18,6 @@ class Message:
 class ToolCall:
     name: str
     arguments: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class ToolSpec:
-    name: str
-    description: str
-    parameters: dict[str, Any]
-    dangerous: bool
-    func: Callable[..., Any]
 
 
 @dataclass
@@ -59,4 +50,3 @@ class ModelResponse:
     @property
     def has_tool_call(self) -> bool:
         return self.tool_call is not None
-

@@ -20,7 +20,7 @@ Default execution path:
 mini-agent "<prompt>"
   -> main()
   -> build_langgraph_runtime()
-  -> TTY: CLI run_with_interactive_approval(...)
+  -> TTY: CLI run_langgraph_with_interactive_approval(...)
   -> non-TTY: LangGraphAgentRuntime.run()
 ```
 
@@ -30,25 +30,24 @@ Manual approval resume path:
 mini-agent --thread-id <id> --resume-approval true
   -> main()
   -> build_langgraph_runtime()
-  -> LangGraphAgentRuntime.resume_approval(thread_id=<id>)
+  -> LangGraphAgentRuntime.resume(thread_id=<id>, approved=true)
 ```
+
+Current limitation:
+
+The default runtime uses an in-memory checkpointer. Manual resume across separate CLI processes is therefore not durable for the default runtime yet. Interactive approval works because `start()` and `resume()` run in the same process against the same runtime instance.
 
 ## Initial Run
 
 `LangGraphAgentRuntime.run()` creates a fresh graph state and delegates to `start()`:
 
 ```text
-user_input
-messages=[]
-observations=[]
-tool_call=None
-permission_decision=None
-approval_result=None
-tool_result=None
-observation=None
+messages=[SystemMessage?, HumanMessage]
+permission=None
+approval=None
 final_answer=None
-step=1
-max_steps=<configured max_steps>
+loop_index=1
+max_loops=<configured max_loops>
 errors=[]
 ```
 
@@ -67,40 +66,20 @@ The `thread_id` is passed to LangGraph through:
 
 This value identifies the checkpoint lineage for the run. A single thread can contain multiple checkpoints as the graph advances.
 
-## Invoke Versus Stream
+## Invoke
 
-The runtime has two execution modes:
+The default runtime uses:
 
 ```python
 graph.invoke(...)
 ```
-
-and:
-
-```python
-graph.stream(...)
-```
-
-Both modes support LangGraph `interrupt(...)`.
 
 `invoke` returns after the graph either:
 
 - finishes normally, or
 - pauses at an interrupt.
 
-`stream` emits graph runtime chunks while nodes execute. It is used for runtime inspection, not for enabling interrupt behavior.
-
-The current `_invoke()` method uses:
-
-```text
-stream_modes is None
-  -> graph.invoke(...)
-
-stream_modes is not None
-  -> graph.stream(...)
-```
-
-In stream mode, the runtime explicitly preserves `__interrupt__` chunks from `updates` so downstream interrupt handling can use the same `_extract_interrupt()` path.
+The archived hands-on runtime contains the earlier graph stream inspection implementation. The active runtime does not expose stream mode through the CLI.
 
 ## Approval Decision Point
 
@@ -124,7 +103,7 @@ The payload contains the approval request:
 
 ```text
 kind=approval_required
-step=<current step>
+loop=<current loop>
 tool_call=<tool call payload>
 permission=<permission decision payload>
 message=<human-readable approval message>
@@ -197,15 +176,16 @@ The resume payload becomes the return value of the earlier `interrupt(...)` call
 The node then stores:
 
 ```text
-approval_result.approved
-approval_result.reason
+approval.approved
+approval.reason
 ```
 
 Routing continues from that result:
 
 ```text
 approved=true
-  -> execute_tool
+  -> tools
+  -> record_tool_messages
 
 approved=false
   -> reject_tool
@@ -218,9 +198,9 @@ Interactive approval is the default CLI behavior when stdin is attached to a ter
 Flow:
 
 ```text
-CLI run_with_interactive_approval(...)
+CLI run_langgraph_with_interactive_approval(...)
   -> runtime.start()
-     -> graph.invoke(...) or graph.stream(...)
+     -> graph.invoke(...)
      -> RunResult with final answer or interrupt
   -> if interrupt exists:
        approval_provider(message, thread_id)
@@ -238,15 +218,11 @@ max_approval_rounds=1
 
 If the resumed graph hits another approval interrupt, the wrapper stops after the configured approval round limit instead of repeatedly prompting in the same terminal session.
 
-When stdin is not a TTY, the CLI does not prompt. In that case `run()` returns the approval message and manual resume command instead.
+When stdin is not a TTY, the CLI does not prompt. In that case `run()` returns the approval interrupt message. With the current in-memory checkpointer, resuming that interrupt requires the same runtime process. Cross-process CLI resume requires a durable checkpointer and is not supported yet.
 
 ## Checkpoint Storage
 
-The CLI-backed runtime stores LangGraph checkpoints in:
-
-```text
-traces/langgraph_checkpoints.sqlite
-```
+The default runtime currently uses LangGraph `InMemorySaver`. Its checkpoints are process-local.
 
 The checkpoint contains graph state needed for resume. The terminal progress output and `RunResult.interrupt_message` are not the source of truth for resume.
 
@@ -273,7 +249,7 @@ CLI/runtime layer:
   _extract_interrupt()
   RunResult.interrupt_message
   interactive yes/no prompt
-  resume_approval()
+  resume()
 ```
 
-`graph.invoke(...)` is suitable for approval interrupt scenarios. `graph.stream(...)` adds runtime visibility but is not required for interrupt/resume correctness.
+`graph.invoke(...)` is suitable for approval interrupt scenarios. Graph stream inspection is not required for interrupt/resume correctness.

@@ -9,12 +9,10 @@ class PermissionGate:
         self.registry = registry
 
     def check(self, tool_call: ToolCall) -> PermissionDecision:
-        spec = self.registry.get(tool_call.name)
-        if spec.dangerous:
+        if self.registry.is_dangerous(tool_call.name):
             return PermissionDecision(
                 allowed=False,
                 requires_approval=True,
                 reason=f"tool '{tool_call.name}' is marked dangerous",
             )
         return PermissionDecision(allowed=True, requires_approval=False, reason="safe tool")
-

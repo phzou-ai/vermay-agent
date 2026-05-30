@@ -1,129 +1,132 @@
 from __future__ import annotations
 
-from mini_agent.tool_registry import ToolRegistry
-from mini_agent.types import ToolSpec
+from typing import Literal
 
-from .constants import KUBECTL_DESCRIBE_RESOURCES, KUBECTL_GET_RESOURCES
+from mini_agent.tool_registry import ToolRegistry
+from mini_agent.tooling import ToolArgs, structured_tool
+from pydantic import Field
+
 from .dangerous import delete_resource, exec_shell, kubectl_apply
 from .mock import grep_logs, kubectl_get, read_file
 from .remote_kubernetes import ssh_kubectl_describe, ssh_kubectl_get
 
 
+class ReadFileArgs(ToolArgs):
+    path: str = Field(description="Path under the project root.")
+
+
+class GrepLogsArgs(ToolArgs):
+    pattern: str = Field(description="Simple substring such as 'error', 'timeout', or '502'.")
+
+
+class KubectlGetArgs(ToolArgs):
+    resource: Literal["pods", "services"] = Field(description="Mock Kubernetes resource type.")
+
+
+class SshKubectlGetArgs(ToolArgs):
+    resource: Literal["pods", "services", "deployments", "nodes", "namespaces", "events"] = Field(
+        description="Kubernetes resource type to read."
+    )
+    namespace: str = Field(default="all", description="Kubernetes namespace or 'all'.")
+
+
+class SshKubectlDescribeArgs(ToolArgs):
+    resource: Literal["pod", "service", "deployment", "node"] = Field(
+        description="Kubernetes resource type to describe."
+    )
+    name: str = Field(description="Kubernetes resource name.")
+    namespace: str = Field(default="default", description="Kubernetes namespace. Ignored for node.")
+
+
+class ExecShellArgs(ToolArgs):
+    command: str = Field(description="Shell command to execute.")
+
+
+class KubectlApplyArgs(ToolArgs):
+    manifest: str = Field(description="Kubernetes manifest YAML or JSON.")
+
+
+class DeleteResourceArgs(ToolArgs):
+    resource: str = Field(description="Kubernetes resource type.")
+    name: str = Field(description="Kubernetes resource name.")
+
+
 def register_devops_tools(registry: ToolRegistry) -> None:
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=read_file,
             name="read_file",
             description="Read a file under the project root.",
-            parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+            args_schema=ReadFileArgs,
             dangerous=False,
-            func=read_file,
         )
     )
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=grep_logs,
             name="grep_logs",
             description="Search the mock nginx log for a simple substring. Use 'error' to find error lines.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "Simple substring such as 'error', 'timeout', or '502'.",
-                    }
-                },
-                "required": ["pattern"],
-            },
+            args_schema=GrepLogsArgs,
             dangerous=False,
-            func=grep_logs,
         )
     )
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=kubectl_get,
             name="kubectl_get",
             description="Read mock Kubernetes resource state from local sample data.",
-            parameters={
-                "type": "object",
-                "properties": {"resource": {"type": "string", "enum": ["pods", "services"]}},
-                "required": ["resource"],
-            },
+            args_schema=KubectlGetArgs,
             dangerous=False,
-            func=kubectl_get,
         )
     )
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=ssh_kubectl_get,
             name="ssh_kubectl_get",
             description=(
                 "Read current real Kubernetes cluster state over SSH. Prefer this for current, real, "
                 "remote, or live cluster questions. This is read-only."
             ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "resource": {"type": "string", "enum": KUBECTL_GET_RESOURCES},
-                    "namespace": {
-                        "type": "string",
-                        "description": "Kubernetes namespace or 'all'. Defaults to 'all'.",
-                    },
-                },
-                "required": ["resource"],
-            },
+            args_schema=SshKubectlGetArgs,
             dangerous=False,
-            func=ssh_kubectl_get,
         )
     )
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=ssh_kubectl_describe,
             name="ssh_kubectl_describe",
             description=(
                 "Describe a Kubernetes resource over SSH. Read-only. Use after ssh_kubectl_get "
                 "when detailed status/events are needed."
             ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "resource": {"type": "string", "enum": KUBECTL_DESCRIBE_RESOURCES},
-                    "name": {"type": "string"},
-                    "namespace": {
-                        "type": "string",
-                        "description": "Kubernetes namespace. Ignored for node. Defaults to default.",
-                    },
-                },
-                "required": ["resource", "name"],
-            },
+            args_schema=SshKubectlDescribeArgs,
             dangerous=False,
-            func=ssh_kubectl_describe,
         )
     )
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=exec_shell,
             name="exec_shell",
             description="Execute a shell command. Dangerous and requires approval.",
-            parameters={"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]},
+            args_schema=ExecShellArgs,
             dangerous=True,
-            func=exec_shell,
         )
     )
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=kubectl_apply,
             name="kubectl_apply",
             description="Apply a Kubernetes manifest. Dangerous and requires approval.",
-            parameters={"type": "object", "properties": {"manifest": {"type": "string"}}, "required": ["manifest"]},
+            args_schema=KubectlApplyArgs,
             dangerous=True,
-            func=kubectl_apply,
         )
     )
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=delete_resource,
             name="delete_resource",
             description="Delete a Kubernetes resource. Dangerous and requires approval.",
-            parameters={
-                "type": "object",
-                "properties": {"resource": {"type": "string"}, "name": {"type": "string"}},
-                "required": ["resource", "name"],
-            },
+            args_schema=DeleteResourceArgs,
             dangerous=True,
-            func=delete_resource,
         )
     )
-

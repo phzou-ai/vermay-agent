@@ -36,10 +36,7 @@ def test_progress_transcript_is_supported(capsys):
 
     captured = capsys.readouterr()
     assert "loop 1" in captured.err
-    assert "  tool_call" in captured.err
-    assert "    name: kubectl_apply" in captured.err
-    assert "    args:" in captured.err
-    assert "      manifest: <3 chars, 2 lines>" in captured.err
+    assert '  tool_call  name=kubectl_apply  args={manifest=<3 chars, 2 lines>}' in captured.err
 
 
 def test_progress_transcript_groups_events_by_step(capsys):
@@ -55,14 +52,9 @@ def test_progress_transcript_groups_events_by_step(capsys):
         "> check k8s",
         "max_steps: 5",
         "loop 1",
-        "  model",
-        "    action: call",
-        "",
-        "  model",
-        "    action: tool_call",
-        "    tool: ssh_kubectl_get",
+        "  model_call  status=calling",
+        "  model_decision  action=tool_call  tool=ssh_kubectl_get",
         "",
         "loop 2",
-        "  model",
-        "    action: call",
+        "  model_call  status=calling",
     ]

@@ -2,205 +2,146 @@
 
 ## Scope
 
-This review focuses on the current LangGraph runtime and shared harness modules.
+This review focuses on the active project path:
 
-No feature expansion is proposed here. The goal is to identify where the code structure should be tightened before more runtime capabilities are added.
+- `mini_agent/main.py`
+- `mini_agent/langgraph_runtime/`
+- shared harness modules under `mini_agent/`
+- active tests under `tests/`
+
+The archived hands-on runtime is outside the active maintenance path and should not drive new architecture decisions.
 
 ## Current Assessment
 
-The project is functionally stable for the current baseline:
-
-- LangGraph is the default runtime.
-- Tool execution is explicit and permission-gated.
-- Approval interrupt/resume is implemented.
-- Progress, stream inspection, and JSONL trace are available.
-- ToolNode compatibility has been evaluated without replacing the active runtime path.
-
-The main issue is not correctness. The main issue is that several files now carry mixed responsibilities.
-
-## High-Priority Organization Issues
-
-### 1. `mini_agent/langgraph_runtime/nodes.py` Is Too Broad
-
-Current responsibilities:
-
-- node factory definitions
-- context build node
-- model call node
-- permission node
-- approval interrupt node
-- tool execution node
-- observation node
-- terminal progress event calls
-- JSONL trace event calls
-- LangGraph custom stream event calls
-- Kubernetes command summary helper
-- observation summary helper
-
-Risk:
-
-- Any change to a single node requires reading unrelated node concerns.
-- Progress and trace formatting logic is mixed with orchestration logic.
-- The file will become hard to extend if memory, RAG, skills, or model routing nodes are added.
-
-Recommended next cleanup:
+The project now has one active runtime:
 
 ```text
 mini_agent/langgraph_runtime/
-  components.py
+```
+
+This runtime uses standard LangChain / LangGraph data structures and `ToolNode`. The earlier explicit harness runtime has been moved to:
+
+```text
+archive/hands_on_langgraph_runtime/
+```
+
+This removes the main structural ambiguity in the project. Future work should extend the active runtime unless a task explicitly asks for historical comparison.
+
+## Active Module Boundaries
+
+### `main.py`
+
+Responsibilities:
+
+- parse CLI arguments
+- build runtime dependencies
+- start or resume a runtime
+- handle terminal approval prompts
+
+Current status: acceptable.
+
+Possible later cleanup:
+
+- move runtime construction into `mini_agent/app_factory.py` if more adapters or runtime profiles are added
+- keep CLI parsing and terminal prompting in `main.py`
+
+### `mini_agent/langgraph_runtime/`
+
+Responsibilities:
+
+- graph state
+- graph topology
+- node implementations
+- routing
+- runtime wrapper
+- model adapter boundary
+
+Current status: active production-oriented path.
+
+Watch point:
+
+- `nodes.py` still combines graph node behavior, progress events, and trace events. This is acceptable for the current size, but it is the first file to split if memory, skills, model routing, or MCP nodes are added.
+
+Potential future split:
+
+```text
+mini_agent/langgraph_runtime/
   nodes/
-    context.py
     model.py
     permission.py
     approval.py
     tools.py
-    observation.py
-    step.py
-  node_events.py
+    loop.py
+  events.py
 ```
 
-Do not do the full split immediately unless the next task touches these areas. A first safe step is to extract `GraphComponents` and node event helpers.
+Do not split this until there is a concrete maintenance trigger.
 
-### 2. `runner.py` Mixes Runtime Lifecycle and Invocation Modes
+### Shared Harness Modules
 
-Current responsibilities:
-
-- holds runtime dependencies
-- builds the compiled graph
-- creates checkpointers
-- builds initial state
-- invokes graph normally
-- invokes graph in stream mode
-- resumes approval interrupts
-- formats interrupt messages
-
-Risk:
-
-- checkpoint and stream handling are correct but tightly packed into the runtime wrapper.
-- future additions such as session metadata, cancellation, or multiple resume types will make `runner.py` harder to read.
-
-Recommended next cleanup:
-
-```text
-mini_agent/langgraph_runtime/
-  runner.py
-  checkpointing.py
-  invocation.py
-```
-
-Lower-risk alternative:
-
-- keep `runner.py` intact for now
-- extract `_build_checkpointer` into `checkpointing.py`
-- extract stream invocation into `streaming.py` beside the existing reporter helpers
-
-### 3. Shared Harness Modules Remain Flat
-
-Current state:
-
-`mini_agent/` contains shared harness modules used by the LangGraph runtime:
+Current shared modules:
 
 - `context_builder.py`
+- `tooling.py`
 - `tool_registry.py`
-- `tool_executor.py`
 - `permission.py`
-- `observation.py`
-- `trace.py`
 - `progress.py`
+- `trace.py`
+- `result_summary.py`
 - `types.py`
 
-Risk:
+Current status: acceptable.
 
-- As more runtime features are added, the package root may become a broad collection of unrelated infrastructure.
-- Moving all modules too early would create import churn without a concrete maintenance benefit.
-
-Recommended cleanup:
-
-Do not move packages yet. Moving modules now would create churn across imports and tests.
-
-If the project grows, introduce a dedicated harness package later:
+Tool schema policy:
 
 ```text
-mini_agent_core/
-  context_builder.py
-  tool_registry.py
-  tool_executor.py
-  permission.py
-  observation.py
-  trace.py
-  progress.py
-  types.py
+Pydantic args_schema
+  -> StructuredTool
+  -> ToolRegistry.schemas()
+  -> model prompt schema
+  -> ToolNode validation and execution
 ```
 
-This should wait until there is a concrete maintenance reason.
+The active runtime should not reintroduce a second tool-parameter schema beside the Pydantic `args_schema`.
 
-## Medium-Priority Issues
+Do not move these into a separate package yet. A package-level refactor would create import churn without a clear immediate benefit.
 
-### Duplicate Summary Helpers
+## Archived Runtime Policy
 
-Runtime nodes need concise terminal summaries for:
+`archive/hands_on_langgraph_runtime/` exists for historical reference only.
 
-- Kubernetes command summary
-- tool exit code extraction
-- observation stdout/stderr summary
+Policy:
 
-Recommended cleanup:
+- do not expose it through CLI
+- do not include it in default pytest collection
+- do not add new production features there
+- do not use it as the basis for future runtime expansion
 
-Extract these into a shared helper module:
+If the archived runtime is needed for explanation or comparison, read it as reference material rather than reactivating it.
+
+## Test Organization
+
+Active tests should cover the active runtime and shared modules.
+
+Archived reference tests are stored under:
 
 ```text
-mini_agent/result_summary.py
+archive/hands_on_langgraph_runtime/reference_tests/
 ```
 
-Status: completed. The LangGraph runtime uses `mini_agent/result_summary.py`.
-
-### Tool Registration Files Are Serviceable but Growing
-
-`mini_agent/tools/devops/registry.py` is already 100+ lines and contains all DevOps tool specs.
-
-Recommended cleanup:
-
-Do not split yet. If more DevOps tools are added, split specs by tool family:
-
-```text
-mini_agent/tools/devops/mock_registry.py
-mini_agent/tools/devops/kubernetes_registry.py
-mini_agent/tools/devops/dangerous_registry.py
-```
-
-### Tests Are Correct but Some Builders Are Repeated
-
-Test files repeat runtime setup helpers and fake model classes.
-
-Recommended cleanup:
-
-Introduce test fixtures only if duplication starts blocking changes. Current duplication is acceptable because each test file remains readable.
-
-## Current ToolNode Decision
-
-`ToolNode` should not replace the active tool execution node yet.
-
-The detailed compatibility evaluation has been moved to the companion `mini-agent-docs` workspace.
-
-The adapter module is acceptable:
-
-```text
-mini_agent/langgraph_runtime/toolnode_adapter.py
-```
-
-It is not on the active runtime path. It records the shape conversion needed if the project later adopts LangChain message-native tool execution.
+They intentionally avoid the `test_` filename prefix so default pytest does not collect them.
 
 ## Recommended Cleanup Order
 
-1. Extract shared result summary helpers.
-2. Extract `GraphComponents` from `nodes.py`.
-3. Extract custom stream event helper from `nodes.py`.
-4. Consider splitting `nodes.py` only when the next graph feature requires touching it.
-5. Keep `runner.py` intact until checkpointing or stream invocation changes again.
+1. Keep a single active CLI runtime.
+2. Keep active docs aligned with `mini_agent/langgraph_runtime/`.
+3. Keep archived runtime out of main test and CLI paths.
+4. Split `langgraph_runtime/nodes.py` only when new runtime capabilities make the file materially harder to maintain.
+5. Add durable checkpointing before any server/API or multi-process approval flow.
 
 ## Do Not Do Yet
 
+- Do not introduce another runtime selection layer.
 - Do not move all shared harness modules into a new package.
-- Do not replace custom tool execution with `ToolNode`.
-- Do not split every node into separate files before there is a concrete maintenance trigger.
-- Do not add RAG, memory, MCP, A2A, or model routing during this cleanup pass.
+- Do not expand memory, MCP, A2A, or model routing during this cleanup pass.
+- Do not treat archive code as a supported runtime.

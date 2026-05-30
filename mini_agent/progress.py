@@ -11,7 +11,6 @@ class ProgressReporter:
     def __init__(self, enabled: bool = True) -> None:
         self.enabled = enabled
         self._last_step: int | None = None
-        self._last_event_step: int | None = None
         self._console = Console(file=sys.stderr, highlight=False)
 
     def event(self, step: int | None, event: str, **fields: Any) -> None:
@@ -25,7 +24,6 @@ class ProgressReporter:
     def _format_event(self, step: int | None, event: str, fields: dict[str, Any]) -> None:
         if event == "run_started":
             self._last_step = None
-            self._last_event_step = None
             self._console.print(f"> {self._input_summary(str(fields['input']))}", style="bold")
             self._print_field("max_steps", fields["max_steps"], indent=0)
             return
@@ -37,91 +35,87 @@ class ProgressReporter:
                 if message.get("name"):
                     role += f":{message['name']}"
                 roles.append(role)
-            self._print_event("context")
-            self._print_field("messages", fields["messages"])
-            self._print_field("observations", fields["observations"])
-            self._print_field("roles", " -> ".join(roles))
+            self._print_event_line(
+                "context",
+                {
+                    "messages": fields["messages"],
+                    "observations": fields["observations"],
+                    "roles": " -> ".join(roles),
+                },
+            )
             return
         if event == "model_call_start":
             self._step_header(step)
-            self._print_event("model")
-            self._print_field("action", "call")
+            self._print_event_line("model_call", {"status": "calling"})
             return
         if event == "model_response":
             self._step_header(step)
-            self._print_event("model")
             if fields.get("tool"):
-                self._print_field("action", "tool_call")
-                self._print_field("tool", fields["tool"])
+                self._print_event_line("model_decision", {"action": "tool_call", "tool": fields["tool"]})
                 return
-            self._print_field("action", "final")
-            self._print_field("summary", self._content_summary(fields["content"]))
+            self._print_event_line(
+                "model_decision",
+                {"action": "final", "summary": self._content_summary(fields["content"])},
+            )
             return
         if event == "tool_call":
             self._step_header(step)
             payload = fields["payload"]
             name = payload.get("name") if isinstance(payload, dict) else None
             args = payload.get("arguments") if isinstance(payload, dict) else payload
-            self._print_event("tool_call")
-            self._print_field("name", name)
-            self._print_mapping("args", args)
+            self._print_event_line("tool_call", {"name": name, "args": self._args_summary(args)})
             return
         if event == "permission":
             self._step_header(step)
             status = "allowed" if fields["allowed"] else "blocked"
-            self._print_event("permission")
-            self._print_field("status", status, style="green" if fields["allowed"] else "yellow")
-            self._print_field("approval", fields["approval"])
-            self._print_field("reason", fields["reason"])
+            self._print_event_line(
+                "permission",
+                {"status": status, "approval": fields["approval"], "reason": fields["reason"]},
+            )
             return
         if event == "tool_execute_start":
             self._step_header(step)
-            self._print_event("execute")
-            self._print_field("tool", fields["tool"])
+            self._print_event_line("execute", {"tool": fields["tool"]})
             return
         if event == "tool_result":
             self._step_header(step)
-            self._print_event("result")
-            self._print_field("tool", fields["tool"])
-            self._print_field("ok", fields["ok"], style="green" if fields["ok"] else "red")
+            payload = {"tool": fields["tool"], "ok": fields["ok"]}
             if fields.get("exit_code") is not None:
-                self._print_field("exit_code", fields["exit_code"])
+                payload["exit_code"] = fields["exit_code"]
             if fields.get("command_summary"):
-                self._print_field("command", self._preview(str(fields["command_summary"]), 220, True))
+                payload["command"] = self._preview(str(fields["command_summary"]), 220, True)
+            self._print_event_line("result", payload)
             return
         if event == "observation":
             self._step_header(step)
-            self._print_event("observation")
-            self._print_field("tool", fields["tool"])
-            self._print_field("ok", fields["ok"], style="green" if fields["ok"] else "red")
-            self._print_field("summary", self._summary_preview(fields["summary"]))
+            self._print_event_line(
+                "observation",
+                {
+                    "tool": fields["tool"],
+                    "ok": fields["ok"],
+                    "summary": self._summary_preview(fields["summary"]),
+                },
+            )
             return
         if event == "final_answer":
             self._step_header(step)
-            self._print_event("done", style="bold green")
-            self._print_field("status", "final_answer")
+            self._print_event_line("done", {"status": "final_answer"})
             print("", file=sys.stderr, flush=True)
             return
         if event == "approval_required":
             self._step_header(step)
-            self._print_event("approval", style="bold yellow")
-            self._print_field("status", "required", style="yellow")
-            self._print_field("tool", fields["tool"])
+            self._print_event_line("approval", {"status": "required", "tool": fields["tool"]})
             return
         if event == "approval_resumed":
             self._step_header(step)
-            self._print_event("approval", style="bold yellow")
-            self._print_field("status", "resumed")
-            self._print_field("tool", fields["tool"])
+            self._print_event_line("approval", {"status": "resumed", "tool": fields["tool"]})
             return
         if event == "max_steps_reached":
-            self._console.print("stopped", style="bold yellow")
-            self._print_field("max_steps", fields["max_steps"], indent=2)
+            self._print_event_line("stopped", {"max_steps": fields["max_steps"]})
             return
         if not event.endswith("_start"):
             self._step_header(step)
-            self._print_event(event)
-            self._print_field("data", self._preview(str(fields), 220, True))
+            self._print_event_line(event, {"data": self._preview(str(fields), 220, True)})
 
     def _step_header(self, step: int | None) -> None:
         if step is None or self._last_step == step:
@@ -131,11 +125,13 @@ class ProgressReporter:
         self._console.print(f"loop {step}", style="bold cyan")
         self._last_step = step
 
-    def _print_event(self, name: str, style: str = "bold green") -> None:
-        if self._last_step is not None and self._last_event_step == self._last_step:
-            print("", file=sys.stderr, flush=True)
-        self._console.print(f"  {name}", style=style)
-        self._last_event_step = self._last_step
+    def _print_event_line(self, name: str, fields: dict[str, Any]) -> None:
+        self._console.print(f"  {name}", end="", style="bold green")
+        for key, value in fields.items():
+            self._console.print("  ", end="")
+            self._console.print(f"{key}=", end="", style="dim")
+            self._console.print(self._render_inline_value(value), end="")
+        self._console.print()
 
     def _print_field(self, key: str, value: Any, indent: int = 4, style: str | None = None) -> None:
         rendered = self._render_scalar(value)
@@ -170,6 +166,17 @@ class ProgressReporter:
             return json.dumps(value, ensure_ascii=False, sort_keys=True)
         except TypeError:
             return str(value)
+
+    def _render_inline_value(self, value: Any) -> str:
+        if isinstance(value, str):
+            return self._preview(value, 220, single_line=True)
+        if isinstance(value, (int, float, bool)) or value is None:
+            return json.dumps(value, ensure_ascii=False)
+        try:
+            rendered = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except TypeError:
+            rendered = str(value)
+        return self._preview(rendered, 220, single_line=True)
 
     def _preview(self, value: str, limit: int = 500, single_line: bool = False) -> str:
         text = value.replace("\n", "\\n") if single_line else value

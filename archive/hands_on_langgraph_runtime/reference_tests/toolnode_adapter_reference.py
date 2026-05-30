@@ -9,8 +9,9 @@ from langgraph.prebuilt import ToolNode
 
 from mini_agent.permission import PermissionGate
 from mini_agent.tool_registry import ToolRegistry
-from mini_agent.types import ToolCall, ToolSpec
-from mini_agent.langgraph_runtime.toolnode_adapter import (
+from mini_agent.types import ToolCall
+from archive.hands_on_langgraph_runtime.runtime.legacy_types import ToolSpec
+from archive.hands_on_langgraph_runtime.runtime.toolnode_adapter import (
     extract_tool_messages,
     tool_call_to_ai_message,
     tool_spec_to_structured_tool,

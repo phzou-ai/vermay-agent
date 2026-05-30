@@ -1,17 +1,27 @@
+from pydantic import Field
+
 from mini_agent.tool_executor import ToolExecutor
 from mini_agent.tool_registry import ToolRegistry
-from mini_agent.types import ToolCall, ToolSpec
+from mini_agent.tooling import ToolArgs, structured_tool
+from mini_agent.types import ToolCall
+
+
+class EchoArgs(ToolArgs):
+    value: str = Field(description="Value to echo.")
+
+
+class EmptyArgs(ToolArgs):
+    pass
 
 
 def test_executor_returns_successful_tool_result():
     registry = ToolRegistry()
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=lambda value: {"value": value},
             name="echo",
             description="Echo value.",
-            parameters={"type": "object", "properties": {"value": {"type": "string"}}},
-            dangerous=False,
-            func=lambda value: {"value": value},
+            args_schema=EchoArgs,
         )
     )
 
@@ -30,12 +40,11 @@ def test_executor_normalizes_tool_failure():
         raise RuntimeError("boom")
 
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=fail,
             name="fail",
             description="Failing tool.",
-            parameters={"type": "object", "properties": {}},
-            dangerous=False,
-            func=fail,
+            args_schema=EmptyArgs,
         )
     )
 

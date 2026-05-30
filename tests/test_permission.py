@@ -1,26 +1,31 @@
 from mini_agent.permission import PermissionGate
 from mini_agent.tool_registry import ToolRegistry
-from mini_agent.types import ToolCall, ToolSpec
+from mini_agent.tooling import ToolArgs, structured_tool
+from mini_agent.types import ToolCall
+
+
+class EmptyArgs(ToolArgs):
+    pass
 
 
 def make_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=lambda: "ok",
             name="safe_tool",
             description="Safe test tool.",
-            parameters={"type": "object", "properties": {}},
+            args_schema=EmptyArgs,
             dangerous=False,
-            func=lambda: "ok",
         )
     )
     registry.register(
-        ToolSpec(
+        structured_tool(
+            func=lambda: "not executed",
             name="dangerous_tool",
             description="Dangerous test tool.",
-            parameters={"type": "object", "properties": {}},
+            args_schema=EmptyArgs,
             dangerous=True,
-            func=lambda: "not executed",
         )
     )
     return registry

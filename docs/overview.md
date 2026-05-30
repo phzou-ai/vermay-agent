@@ -7,10 +7,11 @@ Mini Agent Workbench is a Python agent runtime for validating agent system behav
 The current implementation focuses on:
 
 - LangGraph-based orchestration.
-- Explicit tool registration and execution.
+- LangChain / LangGraph standard message types.
+- Tool registration with LangGraph `ToolNode` execution.
+- Tool schemas defined once through Pydantic `args_schema` on `StructuredTool`.
 - Permission checks before dangerous operations.
 - Approval interrupt and resume.
-- Observation handling after tool execution.
 - Human-readable progress output.
 - Machine-readable JSONL trace output.
 - SSH-backed read-only Kubernetes inspection.
@@ -18,7 +19,9 @@ The current implementation focuses on:
 
 ## Current Runtime Position
 
-The CLI runtime is the LangGraph implementation in `mini_agent/langgraph_runtime/`.
+The CLI runtime is `mini_agent/langgraph_runtime/`.
+
+The earlier hands-on runtime has been archived under `archive/hands_on_langgraph_runtime/`. It remains useful as historical reference material for explicit harness mechanics, but it is not an active runtime path.
 
 ## Primary Runtime Flow
 
@@ -26,19 +29,18 @@ The CLI runtime is the LangGraph implementation in `mini_agent/langgraph_runtime
 CLI input
   -> build runtime
   -> build initial graph state
-  -> build context
   -> call model
   -> route final answer or tool call
   -> check permission
   -> execute safe tool or interrupt for approval
-  -> handle observation
-  -> rebuild context
-  -> produce final answer
+  -> record tool message
+  -> continue or finish
 ```
 
 ## Runtime Guarantees
 
-- Tool execution goes through `ToolRegistry` and `ToolExecutor`.
+- Tool execution goes through LangGraph `ToolNode` after project permission checks.
+- Model-facing tool schemas are derived from the same `StructuredTool` objects that `ToolNode` executes.
 - Dangerous tools are intercepted by `PermissionGate`.
 - Real cluster operations are limited to allowlisted read-only Kubernetes commands.
 - SSH identity file paths are redacted in command traces.

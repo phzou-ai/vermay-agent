@@ -5,64 +5,57 @@
 `mini_agent/main.py`
 
 - Defines the `mini-agent` CLI.
-- Builds the selected LangGraph runtime.
-- Wires model, tools, memory, trace, progress reporting, and checkpoint storage.
-- Supports controlled runtime comparison through `--runtime reference` and `--runtime standard`.
+- Builds the active LangGraph runtime.
+- Wires model adapters, tools, trace logging, progress reporting, and approval handling.
 - Handles approval resume CLI options.
 - Owns terminal-only interactive approval prompting.
 
-## Reference LangGraph Runtime
+## LangGraph Runtime
 
 `mini_agent/langgraph_runtime/`
 
+- `state.py`: standard LangGraph state using `messages: Annotated[list[BaseMessage], add_messages]`.
+- `nodes.py`: model, permission, approval, tool-message recording, and loop-control nodes.
+- `routing.py`: message routing helpers based on `AIMessage.tool_calls`.
+- `graph.py`: graph topology using `ToolNode` after permission and approval checks.
 - `runner.py`: runtime wrapper around the compiled graph.
 - `results.py`: structured runtime result type and API-facing result payload helpers.
-- `graph.py`: LangGraph node and edge topology.
-- `nodes.py`: graph node implementations that call the shared harness components.
-- `routing.py`: conditional edge routing functions.
-- `state.py`: graph state shape.
-- `streaming.py`: optional LangGraph stream inspection and summarized graph stream reporting.
-- `toolnode_adapter.py`: adapters between project tool types and LangChain/LangGraph tool message types; retained for reference-runtime compatibility experiments.
-- `adapters.py`: payload conversion helpers for trace and progress output.
+- `model_adapters.py`: adapter from the project model client to a thin `AIMessage` wrapper.
+- `model_factory.py`: provider factory for constructing runtime model adapters.
 
-This package remains the default CLI runtime and the reference baseline for harness mechanics. It should not keep expanding as the future production-oriented runtime unless a task explicitly targets the reference baseline.
-
-## Standard LangGraph Runtime
-
-`mini_agent/standard_runtime/`
-
-- `state.py`: standard LangGraph state using `messages: Annotated[list[BaseMessage], add_messages]`.
-- `nodes.py`: standard model, permission, approval, tool-message recording, and loop-control nodes.
-- `routing.py`: standard message routing helpers based on `AIMessage.tool_calls`.
-- `graph.py`: standard graph using `ToolNode` after permission and approval checks.
-- `runner.py`: runtime wrapper with start/resume methods.
-- `model_adapters.py`: adapter from the project Ollama client to `AIMessage` / `tool_calls`.
-- `tools.py`: conversion from project `ToolSpec` to LangChain `StructuredTool`.
-
-This package can be selected with `mini-agent "<prompt>" --runtime standard`. It is the future production-oriented runtime direction and is being compared against the reference runtime before any default switch.
+This package is the only active runtime path. It is the production-oriented path and uses LangChain / LangGraph standard message and tool execution types.
 
 ## Shared Harness Components
 
 `mini_agent/`
 
-- `context_builder.py`: builds model messages from user input, memory, skills, and observations.
-- `tool_registry.py`: stores tool specs and exposes model-facing schemas.
-- `tool_executor.py`: executes tool calls and normalizes failures into `ToolResult`.
+- `context_builder.py`: builds the default system prompt and remains the source for context policy text.
+- `tooling.py`: helper for creating `StructuredTool` objects with Pydantic `args_schema` and project metadata.
+- `tool_registry.py`: stores `StructuredTool` objects and exposes model-facing schemas derived from each tool's `args_schema`.
 - `permission.py`: blocks dangerous tools before execution.
-- `observation.py`: converts tool results into model-readable observations.
 - `result_summary.py`: shared summary helpers for terminal progress output.
 - `trace.py`: writes JSONL runtime events.
 - `progress.py`: renders the default human-readable harness progress transcript.
 - `memory.py`: minimal file-backed memory placeholder.
-- `types.py`: shared dataclasses for messages, tools, results, observations, and model responses.
+- `types.py`: shared dataclasses for project message, tool-call, result, observation, and model-response payloads.
 
-## Model Adapter
+The active tool schema source is each tool's Pydantic `args_schema`. `ToolRegistry.schemas()` derives the model-facing schema from the same `StructuredTool` objects that `ToolNode` executes.
+
+`tool_executor.py` and `observation.py` are retained for compatibility and explicit harness tests. They are not the active ToolNode execution path.
+
+## Model Adapters
 
 `mini_agent/model_clients/ollama.py`
 
 - Calls Ollama `/api/chat`.
 - Uses a small JSON action protocol for final answers and tool calls.
 - Reads default model configuration from `.env`, `.env.local`, `.env.dev.local`, or shell environment.
+
+`mini_agent/langgraph_runtime/model_factory.py`
+
+- Builds provider-specific model adapters for the active runtime.
+- Currently supports `ollama`.
+- Future providers such as vLLM or OpenAI should be added here instead of being wired directly into `main.py`.
 
 ## Tool Domains
 
@@ -84,3 +77,12 @@ This package can be selected with `mini-agent "<prompt>" --runtime standard`. It
 - Builds strict SSH commands from environment configuration.
 - Enforces host key checking and known hosts usage.
 - Redacts identity file path in returned command traces.
+
+## Archive
+
+`archive/hands_on_langgraph_runtime/`
+
+- Contains the earlier explicit harness implementation.
+- Is not exposed through the CLI.
+- Is not part of the default pytest suite.
+- Should be treated as historical reference material, not a second runtime track.

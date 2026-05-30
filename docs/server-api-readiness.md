@@ -11,7 +11,7 @@ No HTTP server is implemented in the current project. The active goal is to keep
 The runtime exposes structured methods:
 
 ```python
-start(user_input, thread_id=None, stream_modes=None) -> RunResult
+start(user_input, thread_id=None) -> RunResult
 resume(thread_id, approved, reason=None) -> RunResult
 ```
 
@@ -19,7 +19,6 @@ Compatibility methods remain available for CLI string output:
 
 ```python
 run(...) -> str
-resume_approval(...) -> str
 ```
 
 Server or API code should use `start(...)` and `resume(...)`, not the string compatibility methods.
@@ -34,6 +33,8 @@ HTTP session id / conversation id / user task id
 ```
 
 The runtime does not store active session state. The caller must pass `thread_id` explicitly when continuing or resuming a run.
+
+The default runtime currently uses an in-memory LangGraph checkpointer. A future server/API layer must provide a durable checkpointer before relying on resume across process restarts or multiple workers.
 
 ## API Response Shape
 
@@ -84,5 +85,6 @@ runtime.resume(thread_id=thread_id, approved=True, reason="approved")
 
 - Do not add a web server before the API contract is stable.
 - Do not store active sessions on `LangGraphAgentRuntime`.
+- Do not rely on the default in-memory checkpointer for production resume.
 - Do not expose raw graph state by default.
 - Do not treat `RunResult.interrupt_message` as the source of truth for resume. The source of truth remains `thread_id` plus the LangGraph checkpoint store.

@@ -1,35 +1,45 @@
 from __future__ import annotations
 
+from langchain_core.messages import AIMessage, BaseMessage
+
 from .state import AgentState
+
+
+def latest_ai_message(messages: list[BaseMessage]) -> AIMessage | None:
+    for message in reversed(messages):
+        if isinstance(message, AIMessage):
+            return message
+    return None
 
 
 def route_after_model(state: AgentState) -> str:
     if state.get("final_answer") is not None:
         return "final"
-    if state.get("tool_call") is not None:
-        return "tool_call"
+
+    ai_message = latest_ai_message(state.get("messages", []))
+    if ai_message is not None and ai_message.tool_calls:
+        return "tool_calls"
+
     return "final"
 
 
 def route_after_permission(state: AgentState) -> str:
-    decision = state.get("permission_decision")
-    if decision is None:
-        return "denied"
-    if decision.requires_approval:
-        return "approval_required"
-    if decision.allowed:
+    permission = state.get("permission") or {}
+    if permission.get("status") == "allowed":
         return "allowed"
+    if permission.get("status") == "approval_required":
+        return "approval_required"
     return "denied"
 
 
 def route_after_approval(state: AgentState) -> str:
-    approval = state.get("approval_result") or {}
+    approval = state.get("approval") or {}
     if approval.get("approved") is True:
         return "approved"
     return "rejected"
 
 
-def route_after_step(state: AgentState) -> str:
-    if state["step"] > state["max_steps"]:
-        return "max_steps"
+def route_loop_limit(state: AgentState) -> str:
+    if state["loop_index"] > state["max_loops"]:
+        return "max_loops"
     return "continue"

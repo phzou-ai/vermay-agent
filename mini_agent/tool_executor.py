@@ -10,9 +10,8 @@ class ToolExecutor:
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
         try:
-            spec = self.registry.get(tool_call.name)
-            output = spec.func(**tool_call.arguments)
+            tool = self.registry.get(tool_call.name)
+            output = tool.invoke(tool_call.arguments)
             return ToolResult(name=tool_call.name, ok=True, output=output)
         except Exception as exc:  # noqa: BLE001 - runtime boundary should capture all tool failures.
             return ToolResult(name=tool_call.name, ok=False, error=f"{type(exc).__name__}: {exc}")
-

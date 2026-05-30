@@ -5,7 +5,9 @@ from uuid import uuid4
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 
-from mini_agent.types import ToolCall, ToolSpec
+from mini_agent.types import ToolCall
+
+from .legacy_types import ToolSpec
 
 
 def tool_spec_to_structured_tool(spec: ToolSpec) -> StructuredTool:
