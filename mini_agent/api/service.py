@@ -102,6 +102,8 @@ class AgentService:
             skills_path=self.default_config.skills_path,
             skill_proposals_path=self.default_config.skill_proposals_path,
             mcp_config_path=self.default_config.mcp_config_path,
+            mcp_servers=self.default_config.mcp_servers,
+            mcp_resources=self.default_config.mcp_resources,
         )
         return self.runtime_builder(config)
 

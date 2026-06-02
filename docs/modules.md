@@ -113,7 +113,7 @@ The active tool schema source is each tool's Pydantic `args_schema`. Model adapt
 
 - `weather_forecast` read-only external data tool backed by `wttr.in`.
 
-Configured MCP servers are inactive by default. Runtime construction loads MCP tools only from explicitly selected servers, such as `--mcp-server k8s`. Eligible discovered MCP tools are wrapped as `StructuredTool` objects with namespaced model-facing names and registered through the same `ToolRegistry` path as built-in tools.
+Configured MCP servers are inactive by default. Runtime construction loads MCP tools only from explicitly selected servers, such as `--mcp-server k8s`. Eligible discovered MCP tools are wrapped as `StructuredTool` objects with namespaced model-facing names and registered through the same `ToolRegistry` path as built-in tools. Explicitly selected MCP resources are read once at run start and injected through `RuntimeContextProvider` as bounded external context.
 
 ## Infrastructure
 

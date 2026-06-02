@@ -8,6 +8,7 @@ from mini_agent.langgraph_runtime import LangGraphAgentRuntime, ModelProviderCon
 from .checkpointing import build_sqlite_checkpointer
 from .context_builder import ContextBuilder
 from .mcp_client import MCPToolLoader
+from .mcp_resources import MCPResourceProvider
 from .memory import SQLiteMemoryStore
 from .permission import PermissionGate
 from .progress import ProgressReporter
@@ -41,6 +42,7 @@ class RuntimeFactoryConfig:
     skill_proposals_path: Path = DEFAULT_SKILL_PROPOSALS_PATH
     mcp_config_path: Path = DEFAULT_MCP_CONFIG_PATH
     mcp_servers: tuple[str, ...] = field(default_factory=tuple)
+    mcp_resources: tuple[str, ...] = field(default_factory=tuple)
 
 
 def build_runtime(config: RuntimeFactoryConfig | None = None) -> LangGraphAgentRuntime:
@@ -57,6 +59,15 @@ def build_runtime(config: RuntimeFactoryConfig | None = None) -> LangGraphAgentR
         progress.event(None, "mcp_selection", **payload)
     for tool in mcp_tools:
         registry.register(tool)
+    mcp_resource_provider = None
+    if active_config.mcp_resources:
+        mcp_resource_provider = MCPResourceProvider(
+            config_path=active_config.mcp_config_path,
+            selected_servers=active_config.mcp_servers,
+            selected_resources=active_config.mcp_resources,
+            trace=trace,
+            progress=progress,
+        )
     checkpointer = build_sqlite_checkpointer(active_config.checkpoint_path)
     agent_store = AgentStore(active_config.agent_store_path)
     memory_store = SQLiteMemoryStore(agent_store)
@@ -75,7 +86,11 @@ def build_runtime(config: RuntimeFactoryConfig | None = None) -> LangGraphAgentR
         max_loops=active_config.max_loops,
         checkpointer=checkpointer,
         progress=progress,
-        context_provider=RuntimeContextProvider(memory=memory_store, skills=skill_store),
+        context_provider=RuntimeContextProvider(
+            memory=memory_store,
+            skills=skill_store,
+            mcp_resources=mcp_resource_provider,
+        ),
         close_callbacks=[checkpointer.conn.close, agent_store.close],
     )
 

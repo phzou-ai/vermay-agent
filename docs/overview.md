@@ -57,7 +57,7 @@ CLI input
 - Local trace outputs are not intended for Git.
 - Evaluation replay defaults to recorded trace/scenario data and does not execute a live model or live tools.
 - Memory writes are explicit CLI operations only.
-- MCP servers are inactive by default and must be selected per run; selected MCP tools require approval unless marked read-only in configuration.
+- MCP servers are inactive by default and must be selected per run; selected MCP tools require approval unless marked read-only in configuration. Selected MCP resources are injected only when explicitly requested.
 
 ## Local Storage
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from langchain_core.messages import BaseMessage, SystemMessage
 
 from .memory import SQLiteMemoryStore
+from .mcp_resources import MCPResourceProvider
 from .skills import SkillStore
 
 
@@ -12,6 +13,7 @@ from .skills import SkillStore
 class RuntimeContextProvider:
     memory: SQLiteMemoryStore | None = None
     skills: SkillStore | None = None
+    mcp_resources: MCPResourceProvider | None = None
     memory_limit: int = 5
     skill_limit: int = 3
 
@@ -38,6 +40,10 @@ class RuntimeContextProvider:
                                 skill.content,
                             ]
                         )
-                    )
+                )
                 messages.append(SystemMessage(content="Relevant skills:\n\n" + "\n\n".join(sections)))
+        if self.mcp_resources is not None:
+            content = self.mcp_resources.context_text()
+            if content:
+                messages.append(SystemMessage(content=content))
         return messages

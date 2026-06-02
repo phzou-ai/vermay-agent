@@ -52,12 +52,12 @@ class LangGraphAgentRuntime:
 
     def start(self, user_input: str, thread_id: str | None = None) -> RunResult:
         active_thread_id = thread_id or str(uuid4())
-        state = self._initial_state(user_input)
         self._emit_run_started(user_input)
         self._log_trace(
             "langgraph_run_started",
             {"thread_id": active_thread_id, "max_loops": self.max_loops, "input": user_input},
         )
+        state = self._initial_state(user_input)
         final_state = self.graph.invoke(state, config=self._config(active_thread_id))
         interrupt = self._extract_interrupt(final_state, active_thread_id)
         if interrupt is not None:

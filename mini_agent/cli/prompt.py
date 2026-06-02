@@ -42,6 +42,12 @@ def run_prompt(argv: list[str]) -> None:
         default=[],
         help="Select a configured MCP server for this run. Can be repeated.",
     )
+    parser.add_argument(
+        "--mcp-resource",
+        action="append",
+        default=[],
+        help="Read and inject a selected MCP resource for this run. Can be repeated.",
+    )
     parser.add_argument("--thread-id", default=None, help="LangGraph checkpoint thread id")
     parser.add_argument(
         "--resume-approval",
@@ -59,15 +65,19 @@ def run_prompt(argv: list[str]) -> None:
     except ValueError as exc:
         parser.error(str(exc))
 
-    runtime = build_runtime(
-        RuntimeFactoryConfig(
-            model=model_config,
-            trace_path=trace_path,
-            max_loops=args.max_steps,
-            show_progress=not args.no_progress,
-            mcp_servers=tuple(args.mcp_server),
+    try:
+        runtime = build_runtime(
+            RuntimeFactoryConfig(
+                model=model_config,
+                trace_path=trace_path,
+                max_loops=args.max_steps,
+                show_progress=not args.no_progress,
+                mcp_servers=tuple(args.mcp_server),
+                mcp_resources=tuple(args.mcp_resource),
+            )
         )
-    )
+    except ValueError as exc:
+        parser.error(str(exc))
 
     try:
         if args.resume_approval is not None:

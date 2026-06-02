@@ -241,9 +241,10 @@ Configured MCP servers are inactive by default during agent runs. Select a serve
 
 ```bash
 mini-agent "check k8s status" --mcp-server k8s
+mini-agent "check service status" --mcp-server k8s --mcp-resource k8s://cluster/services
 ```
 
-Selected MCP tools are wrapped as LangChain `StructuredTool` instances with namespaced model-facing names such as `mcp__k8s__kubectl_get`. MCP tools require approval by default unless the server or tool is marked read-only in config. MCP resources and prompts can be listed for inspection; runtime injection is handled in later batches.
+Selected MCP tools are wrapped as LangChain `StructuredTool` instances with namespaced model-facing names such as `mcp__k8s__kubectl_get`. MCP tools require approval by default unless the server or tool is marked read-only in config. Selected MCP resources are read once at run start and injected as bounded external context. MCP prompts can currently be listed for inspection; prompt injection is handled in a later batch.
 
 ## Local Files
 

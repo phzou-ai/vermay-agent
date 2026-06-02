@@ -76,6 +76,7 @@ class MCPToolLoader:
         discovery: Callable[[MCPServerConfig], list[MCPToolDefinition]] | None = None,
         resource_discovery: Callable[[MCPServerConfig], list[MCPResourceDefinition]] | None = None,
         prompt_discovery: Callable[[MCPServerConfig], list[MCPPromptDefinition]] | None = None,
+        resource_reader: Callable[[MCPServerConfig, str], str] | None = None,
         caller: Callable[[MCPServerConfig, str, dict[str, Any]], Any] | None = None,
     ) -> None:
         self.config_path = config_path
@@ -83,6 +84,7 @@ class MCPToolLoader:
         self.discovery = discovery
         self.resource_discovery = resource_discovery
         self.prompt_discovery = prompt_discovery
+        self.resource_reader = resource_reader
         self.caller = caller
 
     def load_tools(self) -> list[StructuredTool]:
@@ -132,6 +134,13 @@ class MCPToolLoader:
         for server in self._server_configs_for_discovery(server_name):
             prompts.extend(self._discover_prompts(server))
         return prompts
+
+    def read_resource(self, server_name: str, uri: str) -> str:
+        servers = self._server_configs_for_discovery(server_name)
+        server = servers[0]
+        if self.resource_reader is not None:
+            return self.resource_reader(server, uri)
+        return asyncio.run(_read_stdio_resource(server, uri))
 
     def _selected_server_configs(self) -> list[MCPServerConfig]:
         if self.selected_servers is None:
@@ -336,6 +345,23 @@ async def _call_stdio_tool(server: MCPServerConfig, tool_name: str, arguments: d
             return _serialize_mcp_result(result)
 
 
+async def _read_stdio_resource(server: MCPServerConfig, uri: str) -> str:
+    if not server.command:
+        raise ValueError(f"MCP server '{server.name}' requires command")
+    try:
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+    except ImportError as exc:
+        raise RuntimeError("MCP SDK is not installed. Install the 'mcp' Python package.") from exc
+
+    params = StdioServerParameters(command=server.command, args=server.args, env=server.env or None)
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.read_resource(uri)
+            return _serialize_resource_result(result)
+
+
 def _serialize_mcp_result(result: Any) -> Any:
     content = getattr(result, "content", None)
     if isinstance(content, list):
@@ -348,6 +374,23 @@ def _serialize_mcp_result(result: Any) -> Any:
                 serialized.append(str(item))
         return "\n".join(serialized)
     return str(result)
+
+
+def _serialize_resource_result(result: Any) -> str:
+    contents = getattr(result, "contents", None)
+    if not isinstance(contents, list):
+        return str(result)
+
+    serialized = []
+    for item in contents:
+        text = getattr(item, "text", None)
+        if text is not None:
+            serialized.append(str(text))
+            continue
+        uri = getattr(item, "uri", "")
+        mime_type = getattr(item, "mimeType", "")
+        serialized.append(f"[binary MCP resource omitted: uri={uri} mime_type={mime_type}]")
+    return "\n".join(serialized)
 
 
 def _serialize_prompt_arguments(arguments: Any) -> list[dict[str, Any]]:
