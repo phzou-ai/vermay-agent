@@ -1,6 +1,6 @@
 # Mini Agent Workbench
 
-Mini Agent Workbench is a Python CLI application for running a LangGraph-based agent with visible harness behavior: context construction, model calls, tool execution, permission checks, approval interrupts, memory, skills, evaluation replay, and MCP tool integration.
+Mini Agent Workbench is a Python local agent workbench for running a LangGraph-based agent with visible harness behavior: context construction, model calls, tool execution, permission checks, approval interrupts, memory, skills, evaluation replay, MCP integration, and local API sessions.
 
 The default runtime uses LangGraph with LangChain standard message and tool types, including `AIMessage.tool_calls`, `ToolMessage`, `ToolNode`, and `add_messages`.
 
@@ -14,7 +14,8 @@ The default runtime uses LangGraph with LangChain standard message and tool type
 - Markdown-based skills.
 - Trace and scenario replay for evaluation.
 - Ollama, OpenAI-compatible, and rule-based model routing adapters.
-- MCP client tool discovery from local configuration.
+- MCP client integration for explicitly selected tools, resources, and prompts.
+- Read-only Kubernetes MCP example server.
 - Local FastAPI server for agent session lifecycle.
 
 ## Install
@@ -30,7 +31,7 @@ python -m pip install -e .
 ## Quick Start
 
 ```bash
-mini-agent "weather forecast for Shanghai"
+mini-agent "weather forecast for Beijing"
 ```
 
 The CLI prints a compact progress transcript to stderr and the final answer to stdout.
@@ -38,7 +39,7 @@ The CLI prints a compact progress transcript to stderr and the final answer to s
 Disable progress output:
 
 ```bash
-mini-agent "weather forecast for Shanghai" --no-progress
+mini-agent "weather forecast for Beijing" --no-progress
 ```
 
 ## API Server
@@ -73,7 +74,7 @@ Start a session:
 ```bash
 curl -X POST http://127.0.0.1:8000/sessions \
   -H 'Content-Type: application/json' \
-  -d '{"input":"weather forecast for Shanghai"}'
+  -d '{"input":"weather forecast for Beijing"}'
 ```
 
 Start a session with explicit MCP selection:
@@ -85,7 +86,7 @@ curl -X POST http://127.0.0.1:8000/sessions \
     "input": "debug service health",
     "mcp": {
       "servers": ["k8s"],
-      "prompts": [{"server": "k8s", "name": "service-health-check"}],
+      "prompts": [{"server": "k8s", "name": "k8s-service-health-check"}],
       "resources": [{"server": "k8s", "uri": "k8s://cluster/services"}]
     }
   }'
@@ -122,7 +123,7 @@ The runtime uses a model provider adapter. Supported providers are:
 Ollama is the default provider.
 
 ```bash
-mini-agent "weather forecast for Shanghai" \
+mini-agent "weather forecast for Beijing" \
   --model-provider ollama \
   --ollama-model deepseek-v4-flash:cloud \
   --ollama-base-url http://127.0.0.1:11434 \
@@ -144,7 +145,7 @@ The project loads `.env`, `.env.local`, `.env.dev.local`, shell environment vari
 Use this provider for OpenAI-style `/chat/completions` endpoints, including vLLM-compatible services.
 
 ```bash
-mini-agent "weather forecast for Shanghai" \
+mini-agent "weather forecast for Beijing" \
   --model-provider openai_compatible \
   --model-option model=qwen \
   --model-option base_url=http://localhost:8000/v1
@@ -153,7 +154,7 @@ mini-agent "weather forecast for Shanghai" \
 Optional authentication can be passed through an environment variable name:
 
 ```bash
-mini-agent "weather forecast for Shanghai" \
+mini-agent "weather forecast for Beijing" \
   --model-provider openai_compatible \
   --model-option model=qwen \
   --model-option base_url=https://api.example.com/v1 \
@@ -259,12 +260,12 @@ Configured MCP servers are inactive by default during agent runs. Select a serve
 ```bash
 mini-agent "check k8s status" --mcp-server k8s
 mini-agent "check service status" --mcp-server k8s --mcp-resource k8s://cluster/services
-mini-agent "debug service health" --mcp-server k8s --mcp-prompt service-health-check
+mini-agent "debug service health" --mcp-server k8s --mcp-prompt k8s-service-health-check
 ```
 
 Selected MCP tools are wrapped as LangChain `StructuredTool` instances with namespaced model-facing names such as `mcp__k8s__kubectl_get`. MCP tools require approval by default unless the server or tool is marked read-only in config.
 
-Selected MCP prompts and resources are read once at run start. Prompts are injected as bounded external workflow guidance; resources are injected as bounded external data. When multiple MCP servers are selected, use qualified forms such as `--mcp-prompt k8s:service-health-check` and `--mcp-resource k8s:k8s://cluster/services`.
+Selected MCP prompts and resources are read once at run start. Prompts are injected as bounded external workflow guidance; resources are injected as bounded external data. When multiple MCP servers are selected, use qualified forms such as `--mcp-prompt k8s:k8s-service-health-check` and `--mcp-resource k8s:k8s://cluster/services`.
 
 The tracked `k8s` server is a read-only example under `examples/mcp_servers/k8s/`. It uses the existing SSH/microk8s backend and the existing `MINI_AGENT_SSH_*` environment configuration. `config/mcp_servers.json` starts it with `.venv/bin/python`; adjust the command if using a different Python environment.
 
