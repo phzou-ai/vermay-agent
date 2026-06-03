@@ -62,7 +62,7 @@ POST /api/tasks/{task_id}/retry
   "wait": true,
   "mcp": {
     "servers": ["k8s"],
-    "prompts": [{"server": "k8s", "name": "service-health-check"}],
+    "prompts": [{"server": "k8s", "name": "k8s-service-health-check"}],
     "resources": [{"server": "k8s", "uri": "k8s://cluster/services"}]
   }
 }
@@ -238,7 +238,7 @@ mini-agent "check service status" --mcp-server k8s --mcp-resource k8s://cluster/
 
 Prompts and resources are read once at run start. Prompts are injected as external workflow guidance before local skills, memory, and resources. Resources are injected as external data after local memory. Prompt arguments use query-string syntax after the prompt name. When multiple MCP servers are selected, use qualified forms such as `--mcp-prompt 'k8s:k8s-service-health-check?service=phzou-core'` and `--mcp-resource k8s:k8s://cluster/services`.
 
-The tracked `k8s` MCP server lives under `examples/mcp_servers/k8s/` and exposes read-only Kubernetes tools, resources, and prompts. It uses the existing SSH/microk8s backend, so live tool/resource reads require the existing `MINI_AGENT_SSH_*` environment configuration. The tracked config starts it with `.venv/bin/python` and applies `timeout_seconds` to MCP discovery, tool calls, resources, and prompts. Update `config/mcp_servers.json` if the project is run from another Python environment.
+A local `k8s` MCP test example lives under `examples/mcp_servers/k8s/` and exposes read-only Kubernetes tools, resources, and prompts. It uses the existing SSH/microk8s backend, so live tool/resource reads require the existing `MINI_AGENT_SSH_*` environment configuration. The config starts it with `.venv/bin/python` and applies `timeout_seconds` to MCP discovery, tool calls, resources, and prompts. Update `config/mcp_servers.json` if the project is run from another Python environment.
 
 ## Trace Path
 

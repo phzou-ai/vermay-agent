@@ -14,7 +14,7 @@ The current implementation focuses on:
 - Approval interrupt and SQLite-backed resume in the CLI runtime.
 - Human-readable progress output.
 - Machine-readable JSONL trace output.
-- Local SQLite metadata for memory, skills, eval runs, and model profiles.
+- Local SQLite metadata for memory, skills, eval runs, and runtime metadata.
 - Explicit-write memory injection.
 - Authored markdown skills and generated skill proposals.
 - Evaluation replay from traces or scenario fixtures without live tool execution.
@@ -72,7 +72,7 @@ CLI input
 - Memory writes are explicit CLI operations only.
 - MCP servers are inactive by default and must be selected per run; selected MCP tools require approval unless marked read-only in configuration.
 - MCP prompts and resources are injected only when explicitly requested; prompts are workflow guidance, resources are external data.
-- The tracked Kubernetes MCP server is a read-only example under `examples/mcp_servers/k8s/`.
+- The Kubernetes MCP server under `examples/mcp_servers/k8s/` is a local read-only test example.
 
 ## MCP v1 Status
 
@@ -88,7 +88,7 @@ MCP v1 is feature-frozen for the current project scope. The implemented boundary
 - MCP discovery, tool calls, prompt reads, and resource reads use configured operation timeouts.
 - MCP transport errors are surfaced through a dedicated transport error boundary.
 - CLI and API session metadata preserve selected MCP servers, prompts, prompt arguments, and resources.
-- The Kubernetes MCP server under `examples/mcp_servers/k8s/` demonstrates read-only tools, resources, and prompts.
+- The Kubernetes MCP test example under `examples/mcp_servers/k8s/` demonstrates read-only tools, resources, and prompts.
 
 The current MCP implementation is sufficient for validating the runtime integration pattern. Further MCP work should be treated as production hardening rather than feature completion.
 
@@ -115,7 +115,7 @@ The project uses SQLite for metadata and files for larger artifacts:
 - `data/eval_runs/*.json`: generated replay reports, local-only by default.
 - `config/mcp_servers.json`: configured MCP clients.
 - `config/models.json`: configured models and the primary model.
-- `examples/mcp_servers/k8s/`: read-only Kubernetes MCP example server.
+- `examples/mcp_servers/k8s/`: local read-only Kubernetes MCP test example.
 
 ## Current Non-Goals
 

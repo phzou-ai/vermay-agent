@@ -60,7 +60,7 @@ A2A support belongs at this API boundary. A2A adapters call `AgentService` and u
 - `graph.py`: graph topology using `ToolNode` after permission and approval checks.
 - `runner.py`: runtime wrapper around the compiled graph.
 - `results.py`: structured runtime result type and API-facing result payload helpers.
-- `model_adapters.py`: adapters from project model clients to a thin `AIMessage` wrapper, plus deterministic model routing.
+- `model_adapters.py`: adapters from project model clients to a thin `AIMessage` wrapper.
 - `model_factory.py`: provider factory for constructing runtime model adapters.
 
 This package is the only active runtime path. It is the production-oriented path and uses LangChain / LangGraph standard message and tool execution types.

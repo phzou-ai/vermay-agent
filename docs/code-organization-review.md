@@ -80,7 +80,7 @@ Current status: active production-oriented path.
 
 Watch point:
 
-- `nodes.py` still combines graph node behavior, progress events, and trace events. This is acceptable for the current size, but it is the first file to split if memory, skills, model routing, or MCP nodes are added.
+- `nodes.py` still combines graph node behavior, progress events, and trace events. This is acceptable for the current size, but it is the first file to split if memory, skills, model adapter orchestration, or MCP nodes are added.
 
 Potential future split:
 
@@ -164,5 +164,5 @@ They intentionally avoid the `test_` filename prefix so default pytest does not 
 
 - Do not introduce another runtime selection layer.
 - Do not move all shared harness modules into a new package.
-- Do not expand memory, MCP, A2A, or model routing during this cleanup pass.
+- Do not expand memory, MCP, A2A, or model adapter orchestration during this cleanup pass.
 - Do not treat archive code as a supported runtime.
