@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mini_agent.api.a2a_readiness import (
+from mini_agent.api.a2a.projection import (
     A2AProjectionKind,
     A2ATaskState,
     is_terminal_a2a_state,

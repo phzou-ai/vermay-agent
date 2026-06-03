@@ -27,7 +27,7 @@
 `mini_agent/api/`
 
 - `app.py`: FastAPI app factory and HTTP route definitions.
-- `a2a_readiness.py`: local projection helpers for A2A task, status, and artifact adapter work.
+- `a2a/projection.py`: local projection helpers for A2A task, status, and artifact adapter work.
 - `a2a/`: opt-in A2A adapter package and protocol route definitions over `AgentService`.
 - `service.py`: service boundary for creating sessions, starting or queueing tasks, resuming approval, retrying terminal tasks, cancelling tasks, and reading task/session metadata.
 - `session_models.py`: project-level task status model and lifecycle predicates.
@@ -37,7 +37,7 @@
 
 The API layer uses `LangGraphAgentRuntime.start()` and `resume()` through task-level service methods. It accepts structured MCP task selection, stores that selection in task metadata, and reuses it on approval resume. It does not call CLI string-output helpers and does not expose raw graph state by default.
 
-A2A support belongs at this API boundary. A2A adapters call `AgentService` and use `a2a_readiness.py`-style projection helpers; they should not modify the LangGraph graph topology or introduce A2A protocol concepts into `mini_agent/langgraph_runtime/`.
+A2A support belongs at this API boundary. A2A adapters call `AgentService` and use `a2a/projection.py`-style projection helpers; they should not modify the LangGraph graph topology or introduce A2A protocol concepts into `mini_agent/langgraph_runtime/`.
 
 ## Runtime Factory
 

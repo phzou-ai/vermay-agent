@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from .session_models import TaskStatus, normalize_task_status
-from .session_store import TaskArtifactRecord, TaskEventRecord, TaskRecord
-from .task_contract import ARTIFACT_TASK_EVENT_TYPES, INTERNAL_A2A_TASK_EVENT_TYPES
+from ..session_models import TaskStatus, normalize_task_status
+from ..session_store import TaskArtifactRecord, TaskEventRecord, TaskRecord
+from ..task_contract import ARTIFACT_TASK_EVENT_TYPES, INTERNAL_A2A_TASK_EVENT_TYPES
 
 
 class A2ATaskState(str, Enum):

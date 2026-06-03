@@ -7,11 +7,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from mini_agent.api.a2a_readiness import is_terminal_a2a_state
 from mini_agent.errors import error_info_from_exception
 
 from .adapter import A2AAdapter
 from .models import A2ACancelTaskRequest, A2ASendMessageRequest
+from .projection import is_terminal_a2a_state
 
 
 def create_a2a_router(adapter: A2AAdapter) -> APIRouter:

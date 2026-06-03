@@ -3,12 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from mini_agent.api.a2a_readiness import (
-    A2AProjectionKind,
-    project_task,
-    project_task_artifact_event,
-    project_task_event,
-)
 from mini_agent.api.task_contract import ARTIFACT_TASK_EVENT_TYPES
 from mini_agent.errors import InvalidRequestError, TaskNotFoundError
 
@@ -16,6 +10,7 @@ from ..service import AgentService
 from ..session_store import SessionRecord, TaskEventRecord, TaskRecord
 from .agent_card import A2AAgentCardConfig, build_agent_card
 from .models import A2AMessage, A2ASendMessageRequest
+from .projection import A2AProjectionKind, project_task, project_task_artifact_event, project_task_event
 
 
 @dataclass(frozen=True)
