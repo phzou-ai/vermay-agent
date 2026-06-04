@@ -39,7 +39,7 @@ def test_progress_transcript_is_supported(capsys):
     assert '  tool_call  name=kubectl_apply  args={manifest=<3 chars, 2 lines>}' in captured.err
 
 
-def test_progress_transcript_groups_events_by_step(capsys):
+def test_progress_transcript_groups_events_by_loop(capsys):
     reporter = ProgressReporter(enabled=True)
 
     reporter.event(None, "run_started", input="check k8s", max_steps=5)

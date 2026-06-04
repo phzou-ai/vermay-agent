@@ -97,6 +97,30 @@ mini_agent/langgraph_runtime/
 
 Do not split this until there is a concrete maintenance trigger.
 
+### `mini_agent/api/`
+
+Responsibilities:
+
+- local session and task lifecycle API
+- session/task metadata persistence
+- task event and artifact persistence
+- background task execution
+- approval resume, cancellation, and retry coordination
+- optional A2A adapter routes
+
+Current status: active API/service boundary.
+
+Recent stabilization:
+
+```text
+mini_agent/api/task_execution.py
+  TaskExecutionService
+  TaskExecutionLocks
+  TaskEventNotifier
+```
+
+These helpers isolate execution infrastructure from `AgentService` while keeping `AgentService` as the public facade.
+
 ### Shared Harness Modules
 
 Current shared modules:
@@ -111,6 +135,25 @@ Current shared modules:
 - `types.py`
 
 Current status: acceptable.
+
+Current classification:
+
+```text
+active:
+  tool_registry.py
+  tool_schema.py
+  tooling.py
+
+active bridge / compatibility:
+  context_builder.py
+  types.py
+
+compatibility / archived harness reference:
+  observation.py
+  tool_executor.py
+```
+
+`context_builder.py` remains active as the source of baseline context policy text, but its project-message builder is a legacy shape compared with the active LangGraph message state. `types.py` still provides active bridge types for model adapters and permission checks. `observation.py` and `tool_executor.py` are intentionally retained for explicit harness tests and archived-runtime reference; they are not part of the active `ToolNode` execution path.
 
 Tool schema policy:
 

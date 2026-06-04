@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .mcp_client import MCPClientManager
-from .progress import ProgressReporter
-from .trace import TraceLogger
+from ..progress import ProgressReporter
+from ..trace import TraceLogger
+from .client import MCPClientManager
 
 
 MAX_RESOURCE_CHARS = 4000

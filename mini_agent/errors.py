@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 
-from .mcp_transport import MCPTransportError
+from .mcp.transport import MCPTransportError
 
 
 class AgentErrorCode(str, Enum):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mini_agent.mcp_selection import MCPSelectionConfig
+from mini_agent.mcp.selection import MCPSelectionConfig
 
 
 def test_mcp_selection_normalizes_payload():

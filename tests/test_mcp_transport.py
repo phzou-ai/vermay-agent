@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from mini_agent.mcp_models import MCPServerConfig
-from mini_agent.mcp_transport import MCPTransportTimeout, _with_transport_handling
+from mini_agent.mcp.models import MCPServerConfig
+from mini_agent.mcp.transport import MCPTransportTimeout, _with_transport_handling
 
 
 async def _slow_operation() -> str:

@@ -4,9 +4,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import parse_qsl
 
-from .mcp_client import MCPClientManager
-from .progress import ProgressReporter
-from .trace import TraceLogger
+from ..progress import ProgressReporter
+from ..trace import TraceLogger
+from .client import MCPClientManager
 
 
 MAX_PROMPT_CHARS = 4000

@@ -5,8 +5,8 @@ from typing import Any, Callable
 
 from langchain_core.tools import StructuredTool
 
-from .mcp_models import MCPServerConfig, MCPToolDefinition, MCPToolReport
-from .tool_schema import DANGEROUS_METADATA_KEY
+from ..tool_schema import DANGEROUS_METADATA_KEY
+from .models import MCPServerConfig, MCPToolDefinition, MCPToolReport
 
 
 MCPToolCaller = Callable[[MCPServerConfig, str, dict[str, Any]], Any]

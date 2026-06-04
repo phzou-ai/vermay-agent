@@ -6,21 +6,21 @@ from typing import Any, Callable, Iterable
 
 from langchain_core.tools import StructuredTool
 
-from .mcp_config import TOOL_EXPOSURE_POLICIES, load_mcp_server_configs
-from .mcp_models import (
+from .config import TOOL_EXPOSURE_POLICIES, load_mcp_server_configs
+from .models import (
     MCPPromptDefinition,
     MCPResourceDefinition,
     MCPServerConfig,
     MCPToolDefinition,
     MCPToolReport,
 )
-from .mcp_tool_adapter import (
+from .tool_adapter import (
     is_exposed_by_policy,
     model_facing_tool_name,
     tool_definition_to_report,
     tool_definition_to_structured_tool,
 )
-from .mcp_transport import (
+from .transport import (
     call_stdio_tool,
     discover_stdio_prompts,
     discover_stdio_resources,

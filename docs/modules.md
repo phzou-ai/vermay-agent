@@ -32,6 +32,7 @@
 - `service.py`: service boundary for creating sessions, starting or queueing tasks, resuming approval, retrying terminal tasks, cancelling tasks, and reading task/session metadata.
 - `session_models.py`: project-level task status model and lifecycle predicates.
 - `session_store.py`: SQLite-backed session, task, task-event, and task-artifact metadata, including selected MCP task configuration and retry lineage.
+- `task_execution.py`: task execution infrastructure helpers for background execution, per-task execution locks, and task-event wait notification.
 - `task_contract.py`: shared task event type contract and event classification sets.
 - `lifecycle.py`: compact lifecycle observer abstractions for API operation monitoring.
 
@@ -69,7 +70,7 @@ This package is the only active runtime path. It is the production-oriented path
 
 `mini_agent/`
 
-- `context_builder.py`: builds the default system prompt and remains the source for context policy text.
+- `context_builder.py`: builds the default system prompt and legacy project-message context; active runtime construction still reuses it as the source for baseline context policy text.
 - `checkpointing.py`: builds SQLite checkpointers for durable CLI approval resume.
 - `tooling.py`: helper for creating `StructuredTool` objects with Pydantic `args_schema` and project metadata.
 - `tool_schema.py`: converts active `StructuredTool` objects into model-facing schemas.
@@ -84,19 +85,12 @@ This package is the only active runtime path. It is the production-oriented path
 - `skills.py`: authored skill parser, retrieval, proposal generation, and approval.
 - `runtime_context.py`: injects selected MCP prompts, authored skills, memory, and selected MCP resources as initial system context.
 - `evaluation.py`: offline trace/scenario replay reporting without live model or live tool execution.
-- `mcp_client.py`: high-level MCP client manager and compatibility re-exports.
-- `mcp_config.py`: MCP server config parsing and exposure policy constants.
-- `mcp_models.py`: MCP server, tool, resource, prompt, and report dataclasses.
-- `mcp_tool_adapter.py`: MCP tool exposure policy, namespacing, reports, and `StructuredTool` conversion.
-- `mcp_transport.py`: stdio MCP transport calls, bounded operation timeouts, transport errors, and result serialization.
-- `mcp_selection.py`: structured MCP selection model used by the API service and runtime factory wiring.
-- `mcp_prompts.py`: selected MCP prompt retrieval, truncation, and context injection.
-- `mcp_resources.py`: selected MCP resource retrieval, truncation, and context injection.
-- `types.py`: shared dataclasses for project message, tool-call, result, observation, and model-response payloads.
+- `mcp/`: MCP client integration package for config parsing, dataclasses, transport, tool wrapping, prompt/resource providers, and structured selection payloads.
+- `types.py`: shared dataclasses for project message, tool-call, result, observation, and model-response payloads. `Message`, `ToolCall`, and `ModelResponse` remain active bridge types for model adapters and permission checks; `ToolResult` and `Observation` are retained for compatibility and explicit harness tests.
 
 The active tool schema source is each tool's Pydantic `args_schema`. Model adapters and `ToolRegistry.schemas()` both derive schemas from the same `StructuredTool` objects that `ToolNode` executes.
 
-`tool_executor.py` and `observation.py` are retained for compatibility and explicit harness tests. They are not the active ToolNode execution path.
+`tool_executor.py` and `observation.py` are retained for compatibility, archived harness reference, and explicit harness tests. They are not the active ToolNode execution path.
 
 ## Model Adapters
 
@@ -138,6 +132,17 @@ The active tool schema source is each tool's Pydantic `args_schema`. Model adapt
 Configured MCP servers are inactive by default. Runtime construction loads MCP tools only from explicitly selected servers, such as `--mcp-server k8s`. Eligible discovered MCP tools are wrapped as `StructuredTool` objects with namespaced model-facing names and registered through the same `ToolRegistry` path as built-in tools.
 
 Explicitly selected MCP prompts and resources are read once at run start. `RuntimeContextProvider` injects them in this order: MCP prompts, local authored skills, explicit memory, MCP resources. Prompts are treated as external workflow guidance; resources are treated as untrusted external data. Prompt selections can carry explicit string arguments, which are passed to the MCP server when retrieving the prompt.
+
+`mini_agent/mcp/`
+
+- `client.py`: high-level MCP client manager and compatibility aliases.
+- `config.py`: MCP server config parsing and exposure policy constants.
+- `models.py`: MCP server, tool, resource, prompt, and report dataclasses.
+- `tool_adapter.py`: MCP tool exposure policy, namespacing, reports, and `StructuredTool` conversion.
+- `transport.py`: stdio MCP transport calls, bounded operation timeouts, transport errors, and result serialization.
+- `selection.py`: structured MCP selection model used by the API service and runtime factory wiring.
+- `prompts.py`: selected MCP prompt retrieval, truncation, and context injection.
+- `resources.py`: selected MCP resource retrieval, truncation, and context injection.
 
 `examples/mcp_servers/k8s/`
 

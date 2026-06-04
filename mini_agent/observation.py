@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Legacy observation formatter for the archived hands-on harness path.
+
+The active LangGraph runtime consumes LangChain `ToolMessage` values instead of
+project `Observation` objects. This module remains for compatibility tests and
+for documenting the earlier explicit ToolResult -> Observation boundary.
+"""
+
 import json
 
 from .types import Observation, ToolResult

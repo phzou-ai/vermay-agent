@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from mini_agent.mcp_client import (
+from mini_agent.mcp.client import (
     MCPPromptDefinition,
     MCPResourceDefinition,
     MCPToolDefinition,

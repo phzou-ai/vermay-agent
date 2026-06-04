@@ -8,9 +8,9 @@ from mini_agent.model_selection import resolve_model_selection
 
 from .checkpointing import build_sqlite_checkpointer
 from .context_builder import ContextBuilder
-from .mcp_client import MCPClientManager
-from .mcp_prompts import MCPPromptProvider
-from .mcp_resources import MCPResourceProvider
+from .mcp.client import MCPClientManager
+from .mcp.prompts import MCPPromptProvider
+from .mcp.resources import MCPResourceProvider
 from .memory import SQLiteMemoryStore
 from .permission import PermissionGate
 from .progress import ProgressReporter

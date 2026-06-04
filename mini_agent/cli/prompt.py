@@ -7,7 +7,7 @@ from typing import Callable
 
 from mini_agent.langgraph_runtime import LangGraphAgentRuntime, ModelProviderConfig
 from mini_agent.model_selection import resolve_model_selection
-from mini_agent.mcp_transport import MCPTransportError
+from mini_agent.mcp.transport import MCPTransportError
 
 from ..app_factory import DEFAULT_MODEL_CONFIG_PATH, ROOT, RuntimeFactoryConfig, build_runtime
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from mini_agent.app_factory import DEFAULT_AGENT_STORE_PATH, DEFAULT_MODEL_CONFIG_PATH, RuntimeFactoryConfig
 from mini_agent.errors import SessionNotFoundError, TaskNotFoundError, error_info_from_exception
 from mini_agent.langgraph_runtime import ModelProviderConfig
-from mini_agent.mcp_selection import MCPSelectionConfig
+from mini_agent.mcp.selection import MCPSelectionConfig
 from mini_agent.model_selection import resolve_model_selection
 from mini_agent.storage import AgentStore
 from mini_agent.trace import TraceLogger

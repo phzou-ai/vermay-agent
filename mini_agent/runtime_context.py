@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from langchain_core.messages import BaseMessage, SystemMessage
 
 from .memory import SQLiteMemoryStore
-from .mcp_prompts import MCPPromptProvider
-from .mcp_resources import MCPResourceProvider
+from .mcp.prompts import MCPPromptProvider
+from .mcp.resources import MCPResourceProvider
 from .skills import SkillStore
 
 

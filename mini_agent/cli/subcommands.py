@@ -12,7 +12,7 @@ from ..app_factory import (
     ROOT,
 )
 from ..evaluation import OfflineReplayService
-from ..mcp_client import MCPClientManager, load_mcp_server_configs
+from ..mcp.client import MCPClientManager, load_mcp_server_configs
 from ..memory import SQLiteMemoryStore
 from ..skills import SkillStore
 from ..storage import AgentStore

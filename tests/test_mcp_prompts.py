@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import SystemMessage
 
-from mini_agent.mcp_client import MCPServerConfig, MCPToolLoader
-from mini_agent.mcp_prompts import MCPPromptProvider, resolve_mcp_prompt_selections
+from mini_agent.mcp.client import MCPServerConfig, MCPToolLoader
+from mini_agent.mcp.prompts import MCPPromptProvider, resolve_mcp_prompt_selections
 from mini_agent.runtime_context import RuntimeContextProvider
 
 

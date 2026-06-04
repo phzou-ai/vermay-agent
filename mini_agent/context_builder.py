@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Legacy message context builder retained as the shared system-prompt source.
+
+The active runtime builds LangChain `BaseMessage` context in `runtime_context`.
+This builder still provides the baseline system prompt through `app_factory` and
+keeps the earlier project `Message` format available for compatibility tests.
+"""
+
 from .types import Message, Observation
 
 

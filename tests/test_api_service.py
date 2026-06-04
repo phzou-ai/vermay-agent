@@ -12,7 +12,7 @@ from mini_agent.api.session_store import SessionStore
 from mini_agent.app_factory import RuntimeFactoryConfig
 from mini_agent.langgraph_runtime import ModelProviderConfig
 from mini_agent.langgraph_runtime.results import RunResult
-from mini_agent.mcp_selection import MCPPromptSelectionConfig, MCPResourceSelectionConfig, MCPSelectionConfig
+from mini_agent.mcp.selection import MCPPromptSelectionConfig, MCPResourceSelectionConfig, MCPSelectionConfig
 from mini_agent.storage import AgentStore
 
 

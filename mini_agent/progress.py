@@ -10,7 +10,7 @@ from rich.console import Console
 class ProgressReporter:
     def __init__(self, enabled: bool = True) -> None:
         self.enabled = enabled
-        self._last_step: int | None = None
+        self._last_loop: int | None = None
         self._console = Console(file=sys.stderr, highlight=False)
 
     def event(self, step: int | None, event: str, **fields: Any) -> None:
@@ -23,7 +23,7 @@ class ProgressReporter:
 
     def _format_event(self, step: int | None, event: str, fields: dict[str, Any]) -> None:
         if event == "run_started":
-            self._last_step = None
+            self._last_loop = None
             self._console.print(f"> {self._input_summary(str(fields['input']))}", style="bold")
             self._print_field("max_steps", fields["max_steps"], indent=0)
             return
@@ -118,12 +118,12 @@ class ProgressReporter:
             self._print_event_line(event, {"data": self._preview(str(fields), 220, True)})
 
     def _step_header(self, step: int | None) -> None:
-        if step is None or self._last_step == step:
+        if step is None or self._last_loop == step:
             return
-        if self._last_step is not None:
+        if self._last_loop is not None:
             print("", file=sys.stderr, flush=True)
         self._console.print(f"loop {step}", style="bold cyan")
-        self._last_step = step
+        self._last_loop = step
 
     def _print_event_line(self, name: str, fields: dict[str, Any]) -> None:
         self._console.print(f"  {name}", end="", style="bold green")

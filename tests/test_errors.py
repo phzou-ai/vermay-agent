@@ -11,7 +11,7 @@ from mini_agent.errors import (
     TaskNotFoundError,
     error_info_from_exception,
 )
-from mini_agent.mcp_transport import MCPTransportError
+from mini_agent.mcp.transport import MCPTransportError
 
 
 def test_error_info_uses_typed_agent_error_metadata():

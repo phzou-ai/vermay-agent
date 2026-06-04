@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .mcp_models import MCPServerConfig
+from .models import MCPServerConfig
 
 
 TOOL_EXPOSURE_POLICIES = {"none", "read_only", "allowlist", "all"}

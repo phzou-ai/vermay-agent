@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+"""Small project value types retained for model-adapter and legacy harness bridges.
+
+The active LangGraph runtime uses LangChain messages and ToolNode for graph
+execution. `Message`, `ModelResponse`, and `ToolCall` remain useful at the
+model-adapter and permission boundaries. `ToolResult` and `Observation` are
+kept for the archived hands-on harness path and focused compatibility tests.
+"""
+
 from dataclasses import dataclass, field
 from typing import Any, Literal
 

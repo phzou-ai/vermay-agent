@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Legacy explicit tool executor for the archived hands-on harness path.
+
+The active LangGraph runtime executes tools through LangGraph `ToolNode` after
+the project permission gate approves a tool call. This module remains as a
+compact reference for the original ToolCall -> ToolResult boundary.
+"""
+
 from .tool_registry import ToolRegistry
 from .types import ToolCall, ToolResult
 

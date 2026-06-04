@@ -60,6 +60,7 @@ CLI input
 - API task cancellation is cooperative: queued/interrupted tasks cancel immediately; running tasks move through `cancel_requested`.
 - API task retry creates a new task row for each retry and records lineage through `root_task_id`, `retry_of_task_id`, and `attempt`.
 - Completed API tasks persist a default final-answer artifact under `task_artifacts`.
+- API background execution, per-task execution locks, and task-event wait notification are isolated in API execution helper modules while `AgentService` remains the public service facade.
 - API task lifecycle events can be streamed through a local SSE endpoint backed by persisted `task_events`.
 - API artifact events are compact references and do not include final answer text.
 - API lifecycle events are compact service-level records written through a lifecycle observer; they do not include raw user input, model output, graph state, final answer text, or full tool output.
