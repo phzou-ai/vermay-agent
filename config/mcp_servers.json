@@ -7,6 +7,12 @@
       "timeout_seconds": 30,
       "read_only": true,
       "tool_exposure": "allowlist",
+      "metadata": {
+        "category": "kubernetes",
+        "execution_scope": "remote",
+        "credential_sensitive": true,
+        "redaction_required": true
+      },
       "tools": {
         "kubectl_get": {},
         "kubectl_describe": {},

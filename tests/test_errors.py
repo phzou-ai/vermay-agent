@@ -5,6 +5,7 @@ import json
 from vermay_agent.errors import (
     AgentError,
     AgentErrorCode,
+    ArtifactNotFoundError,
     InvalidRequestError,
     InvalidSessionStateError,
     SessionNotFoundError,
@@ -39,6 +40,15 @@ def test_error_info_maps_task_not_found_to_safe_public_message():
     assert error.http_status == 404
     assert error.message == "unknown task: task-1"
     assert error.public_message == "task not found"
+
+
+def test_error_info_maps_artifact_not_found_to_safe_public_message():
+    error = error_info_from_exception(ArtifactNotFoundError("task-1:artifact-1"))
+
+    assert error.code == AgentErrorCode.ARTIFACT_NOT_FOUND
+    assert error.http_status == 404
+    assert error.message == "unknown artifact: task-1:artifact-1"
+    assert error.public_message == "artifact not found"
 
 
 def test_error_info_maps_common_request_errors():

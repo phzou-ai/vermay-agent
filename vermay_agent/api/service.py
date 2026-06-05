@@ -18,6 +18,7 @@ from vermay_agent.mcp.selection import MCPSelectionConfig
 from vermay_agent.model_selection import resolve_model_selection
 
 from .lifecycle import LifecycleContext, LifecycleObserver, NullLifecycleObserver, lifecycle_payload
+from .output_envelope import final_answer_envelope
 from .session_models import TaskStatus, is_cancelable, is_resumable, is_terminal
 from .session_store import SessionRecord, SessionStore, TaskArtifactRecord, TaskEventRecord, TaskRecord
 from .task_contract import TaskEventType as Event
@@ -293,6 +294,25 @@ class AgentService:
     def list_sessions(self) -> list[SessionRecord]:
         return self.session_store.list_sessions()
 
+    def delete_session(self, session_id: str) -> None:
+        session = self.session_store.get_session(session_id)
+        if session is None:
+            raise SessionNotFoundError(session_id)
+
+        active_tasks = [
+            task
+            for task in self.session_store.list_session_tasks(session_id)
+            if not is_terminal(task.status)
+        ]
+        if active_tasks:
+            raise SessionConflictError(
+                f"session has non-terminal tasks: {session_id}",
+            )
+
+        deleted = self.session_store.delete_session(session_id)
+        if not deleted:
+            raise SessionNotFoundError(session_id)
+
     def get_task(self, task_id: str) -> TaskRecord | None:
         return self.session_store.get_task(task_id)
 
@@ -501,7 +521,7 @@ class AgentService:
             name="Final answer",
             description="Final text answer returned by the agent.",
             parts=[{"text": task.final_answer, "mediaType": "text/plain"}],
-            metadata={"kind": "final_answer"},
+            metadata=final_answer_envelope().to_metadata(),
             extensions=[],
         )
         event_type = Event.ARTIFACT_UPDATED.value if existing is not None else Event.ARTIFACT_CREATED.value

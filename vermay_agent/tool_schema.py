@@ -7,6 +7,12 @@ from langchain_core.tools import BaseTool
 
 
 DANGEROUS_METADATA_KEY = "dangerous"
+OUTPUT_VISIBILITY_METADATA_KEY = "output_visibility"
+OUTPUT_REDACTION_STATUS_METADATA_KEY = "output_redaction_status"
+OUTPUT_MAX_CHARS_METADATA_KEY = "output_max_chars"
+DEFAULT_OUTPUT_VISIBILITY = "internal"
+DEFAULT_OUTPUT_REDACTION_STATUS = "unknown"
+DEFAULT_OUTPUT_MAX_CHARS = 1000
 
 
 def tool_schema_from_tool(tool: BaseTool) -> dict[str, Any]:

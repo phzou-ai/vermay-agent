@@ -5,7 +5,13 @@ from typing import Any, Callable
 
 from langchain_core.tools import StructuredTool
 
-from ..tool_schema import DANGEROUS_METADATA_KEY
+from ..tool_metadata import (
+    ApprovalPolicy,
+    ExecutionScope,
+    ToolCategory,
+    ToolSource,
+    metadata_from_legacy,
+)
 from .models import MCPServerConfig, MCPToolDefinition, MCPToolReport
 
 
@@ -20,19 +26,38 @@ def tool_definition_to_structured_tool(definition: MCPToolDefinition, caller: MC
     def call_tool(**kwargs):
         return caller(definition.server, definition.name, kwargs)
 
+    metadata_values = {
+        "source": ToolSource.MCP,
+        "category": ToolCategory.MCP,
+        "execution_scope": ExecutionScope.MCP,
+    }
+    metadata_values.update(definition.server.tool_metadata)
+    override = definition.server.tool_overrides.get(definition.name)
+    if isinstance(override, dict):
+        metadata_values.update(override)
+    metadata_values["dangerous"] = dangerous
+    metadata_values["read_only"] = read_only
+    metadata_values.setdefault(
+        "approval_policy",
+        ApprovalPolicy.AUTO if read_only else ApprovalPolicy.APPROVAL_REQUIRED,
+    )
+
+    metadata = metadata_from_legacy(metadata_values).to_metadata()
+    metadata.update(
+        {
+            "mcp_server": definition.server.name,
+            "mcp_tool": definition.name,
+            "mcp_model_facing_name": tool_name,
+            "mcp_read_only": read_only,
+        }
+    )
+
     return StructuredTool(
         name=tool_name,
         description=definition.description or f"MCP tool {definition.name} from {definition.server.name}",
         args_schema=definition.input_schema or {"type": "object", "properties": {}},
         func=call_tool,
-        metadata={
-            DANGEROUS_METADATA_KEY: dangerous,
-            "source": "mcp",
-            "mcp_server": definition.server.name,
-            "mcp_tool": definition.name,
-            "mcp_model_facing_name": tool_name,
-            "mcp_read_only": read_only,
-        },
+        metadata=metadata,
     )
 
 

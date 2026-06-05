@@ -315,3 +315,38 @@ def test_session_store_upserts_task_artifacts(tmp_path):
     assert len(artifacts) == 1
     assert artifacts[0].to_dict()["parts"] == [{"text": "updated", "mediaType": "text/plain"}]
     store.close()
+
+
+def test_session_store_delete_session_removes_tasks_events_and_artifacts(tmp_path):
+    store = AgentStore(tmp_path / "agent.sqlite")
+    sessions = SessionStore(store)
+    sessions.create_session(session_id="session-1", context_id="ctx-1")
+    task = sessions.create_task(
+        task_id="task-1",
+        session_id="session-1",
+        thread_id="thread-1",
+        user_input="hello",
+        model=None,
+        max_loops=None,
+    )
+    sessions.append_task_event(task_id=task.task_id, event_type="task_started", status="running")
+    sessions.upsert_task_artifact(
+        artifact_id="task-1:final_answer",
+        task_id=task.task_id,
+        a2a_artifact_id="final_answer",
+        name="Final answer",
+        description=None,
+        parts=[{"text": "done"}],
+    )
+
+    deleted = sessions.delete_session("session-1")
+
+    assert deleted is True
+    assert sessions.get_session("session-1") is None
+    assert sessions.get_task("task-1") is None
+    assert sessions.list_task_events("task-1") == []
+    assert sessions.list_task_artifacts("task-1") == []
+    assert store.query("SELECT * FROM task_events WHERE session_id=?", ("session-1",)) == []
+    assert store.query("SELECT * FROM task_artifacts WHERE session_id=?", ("session-1",)) == []
+    assert sessions.delete_session("session-1") is False
+    store.close()

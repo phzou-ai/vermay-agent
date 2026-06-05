@@ -26,6 +26,8 @@ GET  /api/sessions/{session_id}
 POST /api/sessions/{session_id}/tasks
 GET  /api/tasks/{task_id}
 GET  /api/tasks/{task_id}/events
+GET  /api/tasks/{task_id}/artifacts
+GET  /api/tasks/{task_id}/artifacts/{artifact_id}
 GET  /api/tasks/{task_id}/stream
 POST /api/tasks/{task_id}/resume
 POST /api/tasks/{task_id}/cancel
@@ -271,13 +273,30 @@ Current default artifact shape:
     }
   ],
   "metadata": {
-    "kind": "final_answer"
+    "envelope_version": 1,
+    "kind": "final_answer",
+    "source": "model",
+    "visibility": "public",
+    "redaction_status": "clean",
+    "truncated": false,
+    "summary": null,
+    "artifact_refs": [],
+    "trace_refs": []
   },
   "extensions": []
 }
 ```
 
-The artifact table is the local output-source baseline for A2A-shaped artifact projection helpers. It is not exposed as a public HTTP endpoint yet.
+The artifact table is the local output-source baseline for A2A-shaped artifact projection helpers. Artifact metadata uses the local output envelope contract to describe kind, source, visibility, and redaction status.
+
+Local API artifact endpoints return only projectable artifacts:
+
+```text
+visibility: public / local_api
+redaction_status: clean / redacted
+```
+
+Artifacts marked `internal`, `trace_only`, `unsafe`, or `unknown` are omitted from local API artifact responses. Legacy final-answer metadata is normalized to envelope v1 in API responses during migration.
 
 ## Task Event Stream
 
@@ -341,6 +360,15 @@ task/run          -> A2A taskId
 `thread_id` remains a LangGraph checkpoint implementation key and is not projected as an A2A identity. Local artifact events are kept out of the status projection and can be projected separately as artifact update payloads.
 
 The A2A adapter translates A2A task/message/status requests into `AgentService` calls and projects persisted `TaskRecord`, `TaskEventRecord`, and `TaskArtifactRecord` data back into A2A payloads. It does not add A2A-specific nodes, routing, state keys, or protocol branches inside `vermay_agent/langgraph_runtime/`.
+
+Artifact projection uses the local output envelope metadata. A2A includes only projectable artifacts:
+
+```text
+visibility: public / a2a
+redaction_status: clean / redacted
+```
+
+Artifacts marked `internal`, `trace_only`, `unsafe`, or `unknown` are omitted from A2A task payloads and artifact update streams. Legacy final-answer metadata remains projectable during migration.
 
 Current projection policy:
 

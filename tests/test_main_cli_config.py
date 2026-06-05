@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from vermay_agent.main import _model_provider_config_from_args, _parse_model_options, _trace_path
+from vermay_agent.cli.prompt import _model_provider_config_from_args, _parse_model_options, _trace_path
+from vermay_agent.cli.subcommands import run_serve_command
 
 
 def make_args(**overrides):
@@ -191,9 +192,7 @@ def test_serve_command_runs_uvicorn_with_local_defaults(monkeypatch):
 
     monkeypatch.setattr("uvicorn.run", fake_run)
 
-    from vermay_agent.main import _run_serve_command
-
-    _run_serve_command([])
+    run_serve_command([])
 
     assert calls == [
         (
@@ -211,9 +210,7 @@ def test_serve_command_accepts_host_and_port(monkeypatch):
 
     monkeypatch.setattr("uvicorn.run", fake_run)
 
-    from vermay_agent.main import _run_serve_command
-
-    _run_serve_command(["--host", "0.0.0.0", "--port", "9000"])
+    run_serve_command(["--host", "0.0.0.0", "--port", "9000"])
 
     assert calls[0][1]["host"] == "0.0.0.0"
     assert calls[0][1]["port"] == 9000
@@ -233,9 +230,7 @@ def test_serve_command_can_enable_a2a_routes(monkeypatch):
     monkeypatch.setattr("uvicorn.run", fake_run)
     monkeypatch.setattr("vermay_agent.api.app.create_app", fake_create_app)
 
-    from vermay_agent.main import _run_serve_command
-
-    _run_serve_command(["--enable-a2a"])
+    run_serve_command(["--enable-a2a"])
 
     assert created == [{"enable_a2a": True}]
     assert calls == [(("app",), {"host": "127.0.0.1", "port": 8000})]

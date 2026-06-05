@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Iterator
 
 SCHEMA_VERSION = 6
 
@@ -259,6 +260,12 @@ class AgentStore:
     def query(self, sql: str, values: Iterable[Any] = ()) -> list[sqlite3.Row]:
         with self._lock:
             return list(self.conn.execute(sql, tuple(values)))
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        with self._lock:
+            with self.conn:
+                yield self.conn
 
     def schema_version(self) -> int:
         rows = self.query("SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations")

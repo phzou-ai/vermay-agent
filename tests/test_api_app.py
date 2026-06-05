@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from fastapi.testclient import TestClient
 
 from vermay_agent.api.app import create_app
+from vermay_agent.api.output_envelope import OutputVisibility, final_answer_envelope
 from vermay_agent.api.service import AgentService
 from vermay_agent.api.session_store import SessionStore
 from vermay_agent.app_factory import RuntimeFactoryConfig
@@ -43,6 +44,21 @@ TASK_RESPONSE_KEYS = {
     "model",
     "max_loops",
     "mcp",
+    "created_at",
+    "updated_at",
+}
+
+TASK_ARTIFACT_RESPONSE_KEYS = {
+    "artifact_id",
+    "task_id",
+    "session_id",
+    "context_id",
+    "a2a_artifact_id",
+    "name",
+    "description",
+    "parts",
+    "metadata",
+    "extensions",
     "created_at",
     "updated_at",
 }
@@ -126,6 +142,9 @@ class FailingService:
         raise self.exc
 
     def retry_task(self, *args, **kwargs):
+        raise self.exc
+
+    def delete_session(self, *args, **kwargs):
         raise self.exc
 
     def get_session(self, session_id):
@@ -263,6 +282,133 @@ def test_api_start_completed_task_and_get_metadata(tmp_path):
         "task_artifact_created",
         "task_completed",
     ]
+    service.close()
+    store.close()
+
+
+def test_api_delete_session_removes_related_task_data(tmp_path):
+    runtime = FakeRuntime([completed("done")])
+    client, store, service = make_client(tmp_path, runtime)
+    client.post("/api/sessions", json={"session_id": "session-1"})
+    client.post("/api/sessions/session-1/tasks", json={"input": "hello", "task_id": "task-1"})
+
+    response = client.delete("/api/sessions/session-1")
+
+    assert response.status_code == 204
+    assert client.get("/api/sessions/session-1").status_code == 404
+    assert client.get("/api/tasks/task-1").status_code == 404
+    assert client.get("/api/tasks/task-1/events").status_code == 404
+    assert client.get("/api/tasks/task-1/artifacts").status_code == 404
+    assert client.get("/api/sessions").json() == []
+    service.close()
+    store.close()
+
+
+def test_api_delete_session_rejects_non_terminal_tasks(tmp_path):
+    executor = ManualTaskExecutionService()
+    client, store, service = make_client(
+        tmp_path,
+        FakeRuntime([completed("done")]),
+        task_execution_service=executor,
+    )
+    client.post("/api/sessions", json={"session_id": "session-1"})
+    client.post("/api/sessions/session-1/tasks", json={"input": "hello", "task_id": "task-1", "wait": False})
+
+    response = client.delete("/api/sessions/session-1")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "invalid_session_state"
+    assert client.get("/api/sessions/session-1").status_code == 200
+    assert client.get("/api/tasks/task-1").status_code == 200
+    service.close()
+    store.close()
+
+
+def test_api_lists_and_gets_projectable_task_artifacts(tmp_path):
+    runtime = FakeRuntime([completed("done")])
+    client, store, service = make_client(tmp_path, runtime)
+    client.post("/api/sessions", json={"session_id": "session-1"})
+    client.post("/api/sessions/session-1/tasks", json={"input": "hello", "task_id": "task-1"})
+
+    listed = client.get("/api/tasks/task-1/artifacts")
+    fetched = client.get("/api/tasks/task-1/artifacts/task-1:final_answer")
+
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert set(listed.json()[0]) == TASK_ARTIFACT_RESPONSE_KEYS
+    assert listed.json()[0]["artifact_id"] == "task-1:final_answer"
+    assert listed.json()[0]["a2a_artifact_id"] == "final_answer"
+    assert listed.json()[0]["parts"] == [{"text": "done", "mediaType": "text/plain"}]
+    assert listed.json()[0]["metadata"] == final_answer_envelope().to_metadata()
+    assert fetched.status_code == 200
+    assert fetched.json() == listed.json()[0]
+    service.close()
+    store.close()
+
+
+def test_api_filters_non_projectable_task_artifacts(tmp_path):
+    runtime = FakeRuntime([completed("done")])
+    client, store, service = make_client(tmp_path, runtime)
+    client.post("/api/sessions", json={"session_id": "session-1"})
+    client.post("/api/sessions/session-1/tasks", json={"input": "hello", "task_id": "task-1"})
+    metadata = final_answer_envelope().to_metadata()
+    metadata["visibility"] = OutputVisibility.INTERNAL.value
+    service.session_store.upsert_task_artifact(
+        artifact_id="task-1:final_answer",
+        task_id="task-1",
+        a2a_artifact_id="final_answer",
+        name="Final answer",
+        description="Final text answer returned by the agent.",
+        parts=[{"text": "done", "mediaType": "text/plain"}],
+        metadata=metadata,
+        extensions=[],
+    )
+
+    listed = client.get("/api/tasks/task-1/artifacts")
+    fetched = client.get("/api/tasks/task-1/artifacts/task-1:final_answer")
+
+    assert listed.status_code == 200
+    assert listed.json() == []
+    assert fetched.status_code == 404
+    assert fetched.json() == {"detail": "artifact not found"}
+    service.close()
+    store.close()
+
+
+def test_api_get_missing_task_artifact_returns_generic_artifact_not_found(tmp_path):
+    runtime = FakeRuntime([completed("done")])
+    client, store, service = make_client(tmp_path, runtime)
+    client.post("/api/sessions", json={"session_id": "session-1"})
+    client.post("/api/sessions/session-1/tasks", json={"input": "hello", "task_id": "task-1"})
+
+    response = client.get("/api/tasks/task-1/artifacts/task-1:missing")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "artifact not found"}
+    service.close()
+    store.close()
+
+
+def test_api_normalizes_legacy_final_answer_artifact_metadata(tmp_path):
+    runtime = FakeRuntime([completed("done")])
+    client, store, service = make_client(tmp_path, runtime)
+    client.post("/api/sessions", json={"session_id": "session-1"})
+    client.post("/api/sessions/session-1/tasks", json={"input": "hello", "task_id": "task-1"})
+    service.session_store.upsert_task_artifact(
+        artifact_id="task-1:final_answer",
+        task_id="task-1",
+        a2a_artifact_id="final_answer",
+        name="Final answer",
+        description="Final text answer returned by the agent.",
+        parts=[{"text": "done", "mediaType": "text/plain"}],
+        metadata={"kind": "final_answer"},
+        extensions=[],
+    )
+
+    listed = client.get("/api/tasks/task-1/artifacts")
+
+    assert listed.status_code == 200
+    assert listed.json()[0]["metadata"] == final_answer_envelope().to_metadata()
     service.close()
     store.close()
 

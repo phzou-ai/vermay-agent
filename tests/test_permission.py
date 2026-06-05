@@ -1,6 +1,8 @@
-from vermay_agent.permission import PermissionGate
+from vermay_agent.permission import PermissionGate, PermissionPolicy
 from vermay_agent.tool_registry import ToolRegistry
 from vermay_agent.tooling import ToolArgs, structured_tool
+from vermay_agent.tool_metadata import ApprovalPolicy
+from vermay_agent.tools.devops import register_devops_tools
 from vermay_agent.types import ToolCall
 
 
@@ -28,6 +30,16 @@ def make_registry() -> ToolRegistry:
             dangerous=True,
         )
     )
+    registry.register(
+        structured_tool(
+            func=lambda: "denied",
+            name="denied_tool",
+            description="Denied test tool.",
+            args_schema=EmptyArgs,
+            dangerous=False,
+            approval_policy=ApprovalPolicy.DENY,
+        )
+    )
     return registry
 
 
@@ -37,6 +49,8 @@ def test_safe_tool_is_allowed_without_approval():
     assert decision.allowed is True
     assert decision.requires_approval is False
     assert decision.reason == "safe tool"
+    assert decision.decision == "allow"
+    assert decision.risk_level == "low"
 
 
 def test_dangerous_tool_requires_approval():
@@ -45,3 +59,52 @@ def test_dangerous_tool_requires_approval():
     assert decision.allowed is False
     assert decision.requires_approval is True
     assert "dangerous_tool" in decision.reason
+    assert decision.decision == "interrupt_for_approval"
+    assert decision.approval_summary == "Approve tool call: dangerous_tool"
+    assert "approval_required" in decision.policy_tags
+
+
+def test_permission_policy_denies_policy_denied_tool():
+    decision = PermissionPolicy(make_registry()).check(ToolCall(name="denied_tool"))
+
+    assert decision.allowed is False
+    assert decision.requires_approval is False
+    assert decision.decision == "deny"
+    assert "denied_tool" in decision.reason
+    assert "policy_deny" in decision.policy_tags
+
+
+def test_permission_policy_denies_unknown_tool():
+    decision = PermissionPolicy(make_registry()).check(ToolCall(name="missing_tool"))
+
+    assert decision.allowed is False
+    assert decision.requires_approval is False
+    assert decision.decision == "deny"
+    assert "unknown tool" in decision.reason
+    assert "unknown_tool" in decision.policy_tags
+
+
+def test_permission_policy_allows_non_sensitive_read_file_path():
+    registry = ToolRegistry()
+    register_devops_tools(registry)
+
+    decision = PermissionPolicy(registry).check(ToolCall(name="read_file", arguments={"path": "README.md"}))
+
+    assert decision.allowed is True
+    assert decision.requires_approval is False
+    assert decision.decision == "allow"
+    assert "argument_sensitive" in decision.policy_tags
+
+
+def test_permission_policy_requires_approval_for_sensitive_read_file_path():
+    registry = ToolRegistry()
+    register_devops_tools(registry)
+
+    decision = PermissionPolicy(registry).check(ToolCall(name="read_file", arguments={"path": ".env.local"}))
+
+    assert decision.allowed is False
+    assert decision.requires_approval is True
+    assert decision.decision == "interrupt_for_approval"
+    assert "sensitive path" in decision.reason
+    assert decision.safe_argument_preview == {"path": ".env.local"}
+    assert "sensitive_path" in decision.policy_tags

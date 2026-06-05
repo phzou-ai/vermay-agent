@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from vermay_agent.tool_registry import ToolRegistry
 from vermay_agent.tooling import ToolArgs, structured_tool
+from vermay_agent.tool_metadata import ApprovalPolicy, ExecutionScope, SideEffectLevel, ToolCategory
 from pydantic import Field
 
 from .constants import KubectlDescribeResource, KubectlGetResource, MockKubectlGetResource
@@ -54,6 +55,12 @@ def register_devops_tools(registry: ToolRegistry) -> None:
             description="Read a file under the project root.",
             args_schema=ReadFileArgs,
             dangerous=False,
+            category=ToolCategory.FILESYSTEM,
+            execution_scope=ExecutionScope.LOCAL,
+            read_only=True,
+            side_effect_level=SideEffectLevel.NONE,
+            approval_policy=ApprovalPolicy.ARGUMENT_SENSITIVE,
+            redaction_required=True,
         )
     )
     registry.register(
@@ -63,6 +70,12 @@ def register_devops_tools(registry: ToolRegistry) -> None:
             description="Search the mock nginx log for a simple substring. Use 'error' to find error lines.",
             args_schema=GrepLogsArgs,
             dangerous=False,
+            category=ToolCategory.LOGS,
+            execution_scope=ExecutionScope.LOCAL,
+            read_only=True,
+            side_effect_level=SideEffectLevel.NONE,
+            approval_policy=ApprovalPolicy.AUTO,
+            redaction_required=False,
         )
     )
     registry.register(
@@ -72,6 +85,12 @@ def register_devops_tools(registry: ToolRegistry) -> None:
             description="Read mock Kubernetes resource state from local sample data.",
             args_schema=KubectlGetArgs,
             dangerous=False,
+            category=ToolCategory.KUBERNETES,
+            execution_scope=ExecutionScope.LOCAL,
+            read_only=True,
+            side_effect_level=SideEffectLevel.NONE,
+            approval_policy=ApprovalPolicy.AUTO,
+            redaction_required=False,
         )
     )
     registry.register(
@@ -84,6 +103,13 @@ def register_devops_tools(registry: ToolRegistry) -> None:
             ),
             args_schema=SshKubectlGetArgs,
             dangerous=False,
+            category=ToolCategory.KUBERNETES,
+            execution_scope=ExecutionScope.REMOTE,
+            read_only=True,
+            side_effect_level=SideEffectLevel.NONE,
+            approval_policy=ApprovalPolicy.AUTO,
+            credential_sensitive=True,
+            redaction_required=True,
         )
     )
     registry.register(
@@ -96,6 +122,13 @@ def register_devops_tools(registry: ToolRegistry) -> None:
             ),
             args_schema=SshKubectlDescribeArgs,
             dangerous=False,
+            category=ToolCategory.KUBERNETES,
+            execution_scope=ExecutionScope.REMOTE,
+            read_only=True,
+            side_effect_level=SideEffectLevel.NONE,
+            approval_policy=ApprovalPolicy.AUTO,
+            credential_sensitive=True,
+            redaction_required=True,
         )
     )
     registry.register(
@@ -105,6 +138,12 @@ def register_devops_tools(registry: ToolRegistry) -> None:
             description="Execute a shell command. Dangerous and requires approval.",
             args_schema=ExecShellArgs,
             dangerous=True,
+            category=ToolCategory.SHELL,
+            execution_scope=ExecutionScope.LOCAL,
+            read_only=False,
+            side_effect_level=SideEffectLevel.UNKNOWN,
+            approval_policy=ApprovalPolicy.APPROVAL_REQUIRED,
+            redaction_required=True,
         )
     )
     registry.register(
@@ -114,6 +153,13 @@ def register_devops_tools(registry: ToolRegistry) -> None:
             description="Apply a Kubernetes manifest. Dangerous and requires approval.",
             args_schema=KubectlApplyArgs,
             dangerous=True,
+            category=ToolCategory.KUBERNETES,
+            execution_scope=ExecutionScope.REMOTE,
+            read_only=False,
+            side_effect_level=SideEffectLevel.REMOTE,
+            approval_policy=ApprovalPolicy.APPROVAL_REQUIRED,
+            credential_sensitive=True,
+            redaction_required=True,
         )
     )
     registry.register(
@@ -123,5 +169,13 @@ def register_devops_tools(registry: ToolRegistry) -> None:
             description="Delete a Kubernetes resource. Dangerous and requires approval.",
             args_schema=DeleteResourceArgs,
             dangerous=True,
+            category=ToolCategory.KUBERNETES,
+            execution_scope=ExecutionScope.REMOTE,
+            read_only=False,
+            side_effect_level=SideEffectLevel.DESTRUCTIVE,
+            approval_policy=ApprovalPolicy.APPROVAL_REQUIRED,
+            destructive=True,
+            credential_sensitive=True,
+            redaction_required=True,
         )
     )

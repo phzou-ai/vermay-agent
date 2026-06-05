@@ -235,6 +235,18 @@ class SessionStore:
             for row in rows
         ]
 
+    def delete_session(self, session_id: str) -> bool:
+        if self.get_session(session_id) is None:
+            return False
+
+        with self.store.transaction() as conn:
+            conn.execute("DELETE FROM task_artifacts WHERE session_id=?", (session_id,))
+            conn.execute("DELETE FROM task_events WHERE session_id=?", (session_id,))
+            conn.execute("DELETE FROM tasks WHERE session_id=?", (session_id,))
+            cursor = conn.execute("DELETE FROM sessions WHERE session_id=?", (session_id,))
+
+        return cursor.rowcount > 0
+
     def create_task(
         self,
         *,
@@ -430,6 +442,20 @@ class SessionStore:
         if not rows:
             return None
         return _task_record_from_row(rows[0])
+
+    def list_session_tasks(self, session_id: str) -> list[TaskRecord]:
+        rows = self.store.query(
+            """
+            SELECT task_id, session_id, thread_id, root_task_id, retry_of_task_id, input, status, attempt, final_answer, interrupt,
+                   interrupt_message, stop_message, error_code, error_message, model, max_loops, mcp,
+                   created_at, updated_at
+            FROM tasks
+            WHERE session_id=?
+            ORDER BY created_at ASC
+            """,
+            (session_id,),
+        )
+        return [_task_record_from_row(row) for row in rows]
 
     def get_task_by_thread_id(self, thread_id: str) -> TaskRecord | None:
         rows = self.store.query(

@@ -12,6 +12,7 @@ class AgentErrorCode(str, Enum):
     INVALID_SESSION_STATE = "invalid_session_state"
     SESSION_NOT_FOUND = "session_not_found"
     TASK_NOT_FOUND = "task_not_found"
+    ARTIFACT_NOT_FOUND = "artifact_not_found"
     MODEL_ERROR = "model_error"
     TOOL_ERROR = "tool_error"
     MCP_ERROR = "mcp_error"
@@ -70,6 +71,16 @@ class TaskNotFoundError(AgentError):
             code=AgentErrorCode.TASK_NOT_FOUND,
             http_status=404,
             public_message="task not found",
+        )
+
+
+class ArtifactNotFoundError(AgentError):
+    def __init__(self, artifact_id: str) -> None:
+        super().__init__(
+            f"unknown artifact: {artifact_id}",
+            code=AgentErrorCode.ARTIFACT_NOT_FOUND,
+            http_status=404,
+            public_message="artifact not found",
         )
 
 

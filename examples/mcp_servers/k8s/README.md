@@ -2,7 +2,7 @@
 
 This example exposes read-only Kubernetes inspection over MCP stdio.
 
-It reuses the same SSH and microk8s/kubectl backend as the built-in Vermay Agent Kubernetes tools. SSH credentials remain inside the MCP server boundary and are read from the existing `MINI_AGENT_SSH_*` environment configuration.
+It reuses the same SSH and microk8s/kubectl backend as the built-in Vermay Agent Kubernetes tools. SSH credentials remain inside the MCP server boundary and are read from the preferred `VERMAY_AGENT_SSH_*` environment configuration. The deprecated `MINI_AGENT_SSH_*` prefix is still accepted as a compatibility fallback during migration.
 
 ## Capabilities
 

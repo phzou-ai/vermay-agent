@@ -12,6 +12,7 @@ from vermay_agent.api.a2a.projection import (
     project_task_artifact_event,
     project_task_event,
 )
+from vermay_agent.api.output_envelope import OutputVisibility, RedactionStatus, final_answer_envelope
 from vermay_agent.api.session_models import TaskStatus
 from vermay_agent.api.session_store import TaskArtifactRecord, TaskEventRecord, TaskRecord
 
@@ -113,12 +114,23 @@ def test_project_task_can_include_artifacts_without_thread_id():
             "name": "Final answer",
             "description": "Final text answer returned by the agent.",
             "parts": [{"text": "done", "mediaType": "text/plain"}],
-            "metadata": {"kind": "final_answer"},
+            "metadata": final_answer_envelope().to_metadata(),
             "extensions": [],
         }
     ]
     assert "task-1:final_answer" not in str(projection.payload)
     assert "thread-1" not in str(projection.payload)
+
+
+def test_project_task_omits_non_projectable_artifacts():
+    task = _task(status=TaskStatus.COMPLETED)
+    artifact = _artifact(metadata=_final_answer_metadata(visibility=OutputVisibility.INTERNAL.value))
+
+    projection = project_task(task, context_id="ctx-1", artifacts=[artifact])
+
+    assert projection.kind == A2AProjectionKind.TASK
+    assert projection.payload is not None
+    assert "artifacts" not in projection.payload["task"]
 
 
 def test_project_task_requires_matching_artifact_task_id():
@@ -186,11 +198,26 @@ def test_project_task_artifact_projects_a2a_artifact_payload():
             "name": "Final answer",
             "description": "Final text answer returned by the agent.",
             "parts": [{"text": "done", "mediaType": "text/plain"}],
-            "metadata": {"kind": "final_answer"},
+            "metadata": final_answer_envelope().to_metadata(),
             "extensions": [],
         }
     }
     assert "task-1:final_answer" not in str(projection.payload)
+
+
+def test_project_task_artifact_normalizes_legacy_final_answer_metadata():
+    projection = project_task_artifact(_artifact(metadata={"kind": "final_answer"}))
+
+    assert projection.kind == A2AProjectionKind.ARTIFACT
+    assert projection.payload is not None
+    assert projection.payload["artifact"]["metadata"] == final_answer_envelope().to_metadata()
+
+
+def test_project_task_artifact_keeps_non_projectable_artifact_internal():
+    projection = project_task_artifact(_artifact(metadata=_final_answer_metadata(redaction_status=RedactionStatus.UNSAFE.value)))
+
+    assert projection.kind == A2AProjectionKind.INTERNAL
+    assert projection.payload is None
 
 
 def test_project_task_artifact_event_maps_artifact_update():
@@ -208,7 +235,7 @@ def test_project_task_artifact_event_maps_artifact_update():
                 "name": "Final answer",
                 "description": "Final text answer returned by the agent.",
                 "parts": [{"text": "done", "mediaType": "text/plain"}],
-                "metadata": {"kind": "final_answer"},
+                "metadata": final_answer_envelope().to_metadata(),
                 "extensions": [],
             },
             "append": False,
@@ -224,6 +251,18 @@ def test_project_task_artifact_event_maps_artifact_update():
     }
     assert "task-1:final_answer" not in str(projection.payload)
     assert "thread-1" not in str(projection.payload)
+
+
+def test_project_task_artifact_event_keeps_non_projectable_artifact_internal():
+    event = _event(event_type="task_artifact_created", status="completed", context_id="ctx-1")
+
+    projection = project_task_artifact_event(
+        event,
+        artifact=_artifact(metadata=_final_answer_metadata(redaction_status=RedactionStatus.UNKNOWN.value)),
+    )
+
+    assert projection.kind == A2AProjectionKind.INTERNAL
+    assert projection.payload is None
 
 
 def test_project_task_artifact_event_falls_back_to_artifact_context_id():
@@ -280,7 +319,12 @@ def _task(
     )
 
 
-def _artifact(*, task_id: str = "task-1", context_id: str | None = "ctx-1") -> TaskArtifactRecord:
+def _artifact(
+    *,
+    task_id: str = "task-1",
+    context_id: str | None = "ctx-1",
+    metadata: dict | None = None,
+) -> TaskArtifactRecord:
     return TaskArtifactRecord(
         artifact_id=f"{task_id}:final_answer",
         task_id=task_id,
@@ -290,11 +334,17 @@ def _artifact(*, task_id: str = "task-1", context_id: str | None = "ctx-1") -> T
         name="Final answer",
         description="Final text answer returned by the agent.",
         parts=[{"text": "done", "mediaType": "text/plain"}],
-        metadata={"kind": "final_answer"},
+        metadata=metadata or final_answer_envelope().to_metadata(),
         extensions=[],
         created_at="2026-06-03T00:00:02+00:00",
         updated_at="2026-06-03T00:00:03+00:00",
     )
+
+
+def _final_answer_metadata(**updates) -> dict:
+    metadata = final_answer_envelope().to_metadata()
+    metadata.update(updates)
+    return metadata
 
 
 def _event(*, event_type: str, status: str | None, context_id: str | None = None) -> TaskEventRecord:

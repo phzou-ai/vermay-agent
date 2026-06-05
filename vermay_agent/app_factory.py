@@ -94,7 +94,7 @@ def build_runtime(config: RuntimeFactoryConfig | None = None) -> LangGraphAgentR
 
     return LangGraphAgentRuntime(
         model=build_model_client(active_model),
-        tools=registry.tools(),
+        tools=registry.tools_for_model(),
         permission_gate=PermissionGate(registry),
         system_prompt=_default_system_prompt(),
         trace=trace,

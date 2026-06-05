@@ -6,6 +6,7 @@ from concurrent.futures import Future
 
 import pytest
 
+from vermay_agent.api.output_envelope import final_answer_envelope
 from vermay_agent.api.session_models import TaskStatus
 from vermay_agent.api.service import AgentService, AgentStartOptions, SessionConflictError, TaskExecutionLocks
 from vermay_agent.api.session_store import SessionStore
@@ -176,7 +177,7 @@ def test_service_starts_task_in_session_with_default_runtime(tmp_path):
     artifacts = service.session_store.list_task_artifacts("task-1")
     assert len(artifacts) == 1
     assert artifacts[0].parts == [{"text": "done", "mediaType": "text/plain"}]
-    assert artifacts[0].metadata == {"kind": "final_answer"}
+    assert artifacts[0].metadata == final_answer_envelope().to_metadata()
     service.close()
     store.close()
 

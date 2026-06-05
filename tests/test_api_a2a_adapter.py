@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from vermay_agent.api.a2a import A2AAdapter, A2ASendMessageRequest, create_a2a_router
 from vermay_agent.api.app import create_app
+from vermay_agent.api.output_envelope import OutputVisibility, final_answer_envelope
 from vermay_agent.api.service import AgentService
 from vermay_agent.api.session_models import TaskStatus
 from vermay_agent.api.session_store import SessionStore
@@ -299,5 +300,38 @@ def test_a2a_adapter_projects_status_and_artifact_events_without_internal_payloa
     assert projections[-1]["statusUpdate"]["status"]["state"] == "TASK_STATE_COMPLETED"
     assert projections[2]["artifactUpdate"]["artifact"]["artifactId"] == "final_answer"
     assert "thread" not in str(projections).lower()
+    service.close()
+    store.close()
+
+
+def test_a2a_adapter_filters_non_projectable_artifacts_from_task_and_event_projection(tmp_path):
+    adapter, store, service, _runtime = make_adapter(tmp_path, FakeRuntime([completed("done")]))
+    request = A2ASendMessageRequest.model_validate(
+        {"message": {"role": "user", "taskId": "task-1", "contextId": "ctx-1", "parts": [{"text": "hello"}]}}
+    )
+    adapter.send_message(request)
+    metadata = final_answer_envelope().to_metadata()
+    metadata["visibility"] = OutputVisibility.INTERNAL.value
+    service.session_store.upsert_task_artifact(
+        artifact_id="task-1:final_answer",
+        task_id="task-1",
+        a2a_artifact_id="final_answer",
+        name="Final answer",
+        description="Final text answer returned by the agent.",
+        parts=[{"text": "done", "mediaType": "text/plain"}],
+        metadata=metadata,
+        extensions=[],
+    )
+
+    task_payload = adapter.get_task("task-1")
+    projections = adapter.project_task_events("task-1")
+
+    assert "artifacts" not in task_payload["task"]
+    assert [next(iter(projection)) for projection in projections] == [
+        "statusUpdate",
+        "statusUpdate",
+        "statusUpdate",
+    ]
+    assert "artifactUpdate" not in str(projections)
     service.close()
     store.close()

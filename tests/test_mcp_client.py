@@ -25,6 +25,11 @@ def test_mcp_config_parser_reads_stdio_servers(tmp_path):
                         "args": ["server.py"],
                         "timeout_seconds": 12.5,
                         "read_only_tools": ["search"],
+                        "metadata": {
+                            "category": "kubernetes",
+                            "execution_scope": "remote",
+                            "redaction_required": True,
+                        },
                     }
                 }
             }
@@ -38,6 +43,11 @@ def test_mcp_config_parser_reads_stdio_servers(tmp_path):
     assert servers[0].command == "python"
     assert servers[0].timeout_seconds == 12.5
     assert servers[0].read_only_tools == {"search"}
+    assert servers[0].tool_metadata == {
+        "category": "kubernetes",
+        "execution_scope": "remote",
+        "redaction_required": True,
+    }
 
 
 def test_mcp_config_parser_rejects_invalid_timeout(tmp_path):
@@ -48,6 +58,17 @@ def test_mcp_config_parser_rejects_invalid_timeout(tmp_path):
     )
 
     with pytest.raises(ValueError, match="timeout_seconds must be a positive number"):
+        load_mcp_server_configs(config)
+
+
+def test_mcp_config_parser_rejects_non_object_metadata(tmp_path):
+    config = tmp_path / "mcp_servers.json"
+    config.write_text(
+        json.dumps({"servers": {"docs": {"transport": "stdio", "command": "python", "metadata": []}}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="metadata must be an object"):
         load_mcp_server_configs(config)
 
 
@@ -82,6 +103,9 @@ def test_mcp_tools_are_approval_required_by_default(tmp_path):
 
     assert tools[0].name == "mcp__docs__search"
     assert tools[0].metadata["dangerous"] is True
+    assert tools[0].metadata["read_only"] is False
+    assert tools[0].metadata["approval_policy"] == "approval_required"
+    assert tools[0].metadata["source"] == "mcp"
     assert tools[0].metadata["mcp_server"] == "docs"
     assert tools[0].metadata["mcp_tool"] == "search"
 
@@ -116,6 +140,98 @@ def test_mcp_read_only_config_bypasses_approval(tmp_path):
     tools = MCPToolLoader(config, discovery=discover, caller=lambda server, name, args: "ok").load_tools()
 
     assert tools[0].metadata["dangerous"] is False
+    assert tools[0].metadata["read_only"] is True
+    assert tools[0].metadata["approval_policy"] == "auto"
+
+
+def test_mcp_tool_inherits_server_metadata_defaults(tmp_path):
+    config = tmp_path / "mcp_servers.json"
+    config.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "k8s": {
+                        "transport": "stdio",
+                        "command": "server",
+                        "read_only": True,
+                        "metadata": {
+                            "category": "kubernetes",
+                            "execution_scope": "remote",
+                            "credential_sensitive": True,
+                            "redaction_required": True,
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def discover(server):
+        return [
+            MCPToolDefinition(
+                name="kubectl_get",
+                description="Read cluster.",
+                input_schema={"type": "object", "properties": {}},
+                server=server,
+            )
+        ]
+
+    tools = MCPToolLoader(config, discovery=discover, caller=lambda server, name, args: "ok").load_tools()
+
+    assert tools[0].metadata["category"] == "kubernetes"
+    assert tools[0].metadata["execution_scope"] == "remote"
+    assert tools[0].metadata["credential_sensitive"] is True
+    assert tools[0].metadata["redaction_required"] is True
+    assert tools[0].metadata["read_only"] is True
+    assert tools[0].metadata["approval_policy"] == "auto"
+
+
+def test_mcp_tool_override_metadata_takes_precedence(tmp_path):
+    config = tmp_path / "mcp_servers.json"
+    config.write_text(
+        json.dumps(
+            {
+                "servers": {
+                    "docs": {
+                        "transport": "stdio",
+                        "command": "server",
+                        "read_only": True,
+                        "metadata": {
+                            "category": "mcp",
+                            "execution_scope": "mcp",
+                            "redaction_required": True,
+                        },
+                        "tools": {
+                            "search": {
+                                "category": "filesystem",
+                                "execution_scope": "local",
+                                "redaction_required": False,
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def discover(server):
+        return [
+            MCPToolDefinition(
+                name="search",
+                description="Search docs.",
+                input_schema={"type": "object", "properties": {}},
+                server=server,
+            )
+        ]
+
+    tools = MCPToolLoader(config, discovery=discover, caller=lambda server, name, args: "ok").load_tools()
+
+    assert tools[0].metadata["category"] == "filesystem"
+    assert tools[0].metadata["execution_scope"] == "local"
+    assert tools[0].metadata["redaction_required"] is False
+    assert tools[0].metadata["read_only"] is True
 
 
 def test_mcp_runtime_selection_can_load_no_servers(tmp_path):

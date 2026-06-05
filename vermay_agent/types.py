@@ -51,6 +51,11 @@ class PermissionDecision:
     allowed: bool
     requires_approval: bool
     reason: str
+    decision: str | None = None
+    risk_level: str | None = None
+    approval_summary: str | None = None
+    safe_argument_preview: dict[str, Any] = field(default_factory=dict)
+    policy_tags: list[str] = field(default_factory=list)
 
 
 @dataclass

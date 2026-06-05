@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool
 
-from .tool_schema import DANGEROUS_METADATA_KEY, tool_schemas_from_tools
+from .tool_metadata import ApprovalPolicy, ToolMetadata, metadata_from_legacy
+from .tool_schema import (
+    DANGEROUS_METADATA_KEY,
+    tool_schemas_from_tools,
+)
 
 
 class ToolRegistry:
@@ -29,6 +33,27 @@ class ToolRegistry:
     def tools(self) -> list[BaseTool]:
         return [self._tools[name] for name in self.names()]
 
+    def tools_for_model(self) -> list[BaseTool]:
+        return [
+            self._tools[name]
+            for name in self.names()
+            if self.tool_metadata(name).approval_policy != ApprovalPolicy.DENY
+        ]
+
     def is_dangerous(self, name: str) -> bool:
         tool = self.get(name)
         return bool((tool.metadata or {}).get(DANGEROUS_METADATA_KEY, False))
+
+    def metadata(self, name: str) -> dict:
+        return dict(self.get(name).metadata or {})
+
+    def tool_metadata(self, name: str) -> ToolMetadata:
+        return metadata_from_legacy(self.metadata(name))
+
+    def output_policy(self, name: str) -> dict:
+        metadata = self.tool_metadata(name)
+        return {
+            "visibility": metadata.output_visibility,
+            "redaction_status": metadata.output_redaction_status,
+            "max_chars": metadata.output_max_chars,
+        }

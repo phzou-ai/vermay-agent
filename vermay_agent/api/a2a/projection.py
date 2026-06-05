@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from ..output_envelope import is_projectable_to_a2a, normalize_output_metadata
 from ..session_models import TaskStatus, normalize_task_status
 from ..session_store import TaskArtifactRecord, TaskEventRecord, TaskRecord
 from ..task_contract import ARTIFACT_TASK_EVENT_TYPES, INTERNAL_A2A_TASK_EVENT_TYPES
@@ -89,7 +90,9 @@ def project_task(
         for artifact in artifacts:
             if artifact.task_id != task.task_id:
                 raise ValueError(f"artifact task_id mismatch: task={task.task_id}, artifact={artifact.task_id}")
-        task_payload["artifacts"] = [_artifact_payload(artifact) for artifact in artifacts]
+        projected_artifacts = [_artifact_payload(artifact) for artifact in artifacts if _is_projectable_artifact(artifact)]
+        if projected_artifacts:
+            task_payload["artifacts"] = projected_artifacts
     payload = {"task": task_payload}
     return A2AProjection(kind=A2AProjectionKind.TASK, payload=payload)
 
@@ -123,6 +126,8 @@ def project_task_event(event: TaskEventRecord) -> A2AProjection:
 
 
 def project_task_artifact(artifact: TaskArtifactRecord) -> A2AProjection:
+    if not _is_projectable_artifact(artifact):
+        return A2AProjection(kind=A2AProjectionKind.INTERNAL, payload=None)
     return A2AProjection(kind=A2AProjectionKind.ARTIFACT, payload={"artifact": _artifact_payload(artifact)})
 
 
@@ -133,6 +138,8 @@ def project_task_artifact_event(event: TaskEventRecord, *, artifact: TaskArtifac
         return A2AProjection(kind=A2AProjectionKind.INTERNAL, payload=None)
     if artifact.task_id != event.task_id:
         raise ValueError(f"artifact task_id mismatch: event={event.task_id}, artifact={artifact.task_id}")
+    if not _is_projectable_artifact(artifact):
+        return A2AProjection(kind=A2AProjectionKind.INTERNAL, payload=None)
 
     context_id = _context_id(context_id=event.context_id or artifact.context_id, session_id=event.session_id)
     payload = {
@@ -182,7 +189,7 @@ def _artifact_payload(artifact: TaskArtifactRecord) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifactId": artifact.a2a_artifact_id,
         "parts": artifact.parts,
-        "metadata": artifact.metadata,
+        "metadata": normalize_output_metadata(artifact.metadata),
         "extensions": artifact.extensions,
     }
     if artifact.name is not None:
@@ -190,6 +197,10 @@ def _artifact_payload(artifact: TaskArtifactRecord) -> dict[str, Any]:
     if artifact.description is not None:
         payload["description"] = artifact.description
     return payload
+
+
+def _is_projectable_artifact(artifact: TaskArtifactRecord) -> bool:
+    return is_projectable_to_a2a(artifact.metadata)
 
 
 def _metadata(

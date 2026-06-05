@@ -4,7 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from vermay_agent.env_config import load_prefixed_env
+from vermay_agent.env_config import load_prefixed_env_with_legacy_aliases
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -46,19 +46,24 @@ class SshClient:
         if self.config_path is not None:
             return json.loads(self.config_path.read_text(encoding="utf-8"))
 
-        values = load_prefixed_env("MINI_AGENT_SSH_", root=ROOT)
+        values = load_prefixed_env_with_legacy_aliases(
+            "VERMAY_AGENT_SSH_",
+            legacy_prefixes=("MINI_AGENT_SSH_",),
+            root=ROOT,
+        )
         required = {
-            "target": values.get("MINI_AGENT_SSH_TARGET"),
-            "port": values.get("MINI_AGENT_SSH_PORT"),
-            "identityFile": values.get("MINI_AGENT_SSH_IDENTITY_FILE"),
-            "knownHostsFile": values.get("MINI_AGENT_SSH_KNOWN_HOSTS_FILE"),
+            "target": values.get("VERMAY_AGENT_SSH_TARGET"),
+            "port": values.get("VERMAY_AGENT_SSH_PORT"),
+            "identityFile": values.get("VERMAY_AGENT_SSH_IDENTITY_FILE"),
+            "knownHostsFile": values.get("VERMAY_AGENT_SSH_KNOWN_HOSTS_FILE"),
         }
         missing = [name for name, value in required.items() if not value]
         if missing:
             raise ValueError(
                 "Missing SSH environment config: "
                 + ", ".join(missing)
-                + ". Define it in .env.local using .env as the template."
+                + ". Define VERMAY_AGENT_SSH_* in .env.local using .env as the template. "
+                + "MINI_AGENT_SSH_* is still accepted as deprecated compatibility."
             )
 
         return {

@@ -27,8 +27,11 @@ def load_mcp_server_configs(path: Path) -> list[MCPServerConfig]:
         env = raw.get("env") or {}
         read_only_tools = raw.get("read_only_tools") or []
         tool_overrides = raw.get("tools") or {}
+        tool_metadata = raw.get("metadata", {})
         tool_exposure = str(raw.get("tool_exposure") or "read_only")
         timeout_seconds = _timeout_seconds(raw.get("timeout_seconds", 30), name)
+        if not isinstance(tool_metadata, dict):
+            raise ValueError(f"MCP server '{name}' metadata must be an object")
         if tool_exposure not in TOOL_EXPOSURE_POLICIES:
             raise ValueError(
                 f"MCP server '{name}' has unsupported tool_exposure '{tool_exposure}'. "
@@ -45,6 +48,7 @@ def load_mcp_server_configs(path: Path) -> list[MCPServerConfig]:
                 read_only=bool(raw.get("read_only", False)),
                 read_only_tools={str(item) for item in read_only_tools},
                 tool_overrides=tool_overrides if isinstance(tool_overrides, dict) else {},
+                tool_metadata={str(key): value for key, value in tool_metadata.items()},
                 tool_exposure=tool_exposure,
             )
         )

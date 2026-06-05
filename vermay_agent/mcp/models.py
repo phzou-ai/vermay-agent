@@ -15,6 +15,7 @@ class MCPServerConfig:
     read_only: bool = False
     read_only_tools: set[str] = field(default_factory=set)
     tool_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+    tool_metadata: dict[str, Any] = field(default_factory=dict)
     tool_exposure: str = "read_only"
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from vermay_agent.tool_registry import ToolRegistry
 from vermay_agent.tooling import ToolArgs, structured_tool
+from vermay_agent.tool_metadata import ApprovalPolicy, ExecutionScope, SideEffectLevel, ToolCategory
 from pydantic import Field
 
 from .forecast import weather_forecast
@@ -25,5 +26,11 @@ def register_weather_tools(registry: ToolRegistry) -> None:
             ),
             args_schema=WeatherForecastArgs,
             dangerous=False,
+            category=ToolCategory.WEATHER,
+            execution_scope=ExecutionScope.EXTERNAL_NETWORK,
+            read_only=True,
+            side_effect_level=SideEffectLevel.NONE,
+            approval_policy=ApprovalPolicy.AUTO,
+            redaction_required=False,
         )
     )

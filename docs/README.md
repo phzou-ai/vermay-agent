@@ -27,4 +27,4 @@ Archived implementation material retained in this repository is kept under `arch
 
 The current project name is Vermay Agent Workbench. The active Python package is `vermay_agent`, and the preferred CLI command is `vermay-agent`.
 
-The legacy `mini-agent` command and `mini_agent` import namespace remain compatibility aliases during the migration. The external planning workspace is still named `mini-agent-docs` for now, so path references to that directory are intentional.
+The legacy `mini-agent` command, `mini_agent` import namespace, and `MINI_AGENT_*` environment variable prefix remain compatibility aliases during the migration. New code and docs should prefer `vermay-agent`, `vermay_agent`, and `VERMAY_AGENT_*` configuration names. The external planning workspace is still named `mini-agent-docs` for now, so path references to that directory are intentional.

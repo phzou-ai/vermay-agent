@@ -6,11 +6,11 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from vermay_agent.app_factory import DEFAULT_AGENT_STORE_PATH, DEFAULT_MODEL_CONFIG_PATH, RuntimeFactoryConfig
-from vermay_agent.errors import SessionNotFoundError, TaskNotFoundError, error_info_from_exception
+from vermay_agent.errors import ArtifactNotFoundError, SessionNotFoundError, TaskNotFoundError, error_info_from_exception
 from vermay_agent.langgraph_runtime import ModelProviderConfig
 from vermay_agent.mcp.selection import MCPSelectionConfig
 from vermay_agent.model_selection import resolve_model_selection
@@ -19,9 +19,10 @@ from vermay_agent.trace import TraceLogger
 
 from .a2a import A2AAdapter, A2AAdapterConfig, A2AAgentCardConfig, create_a2a_router
 from .lifecycle import TraceLifecycleObserver
+from .output_envelope import is_projectable_to_local_api, normalize_output_metadata
 from .service import AgentService, AgentStartOptions
 from .session_models import is_terminal
-from .session_store import SessionStore
+from .session_store import SessionStore, TaskArtifactRecord
 
 
 class AgentErrorResponse(BaseModel):
@@ -77,6 +78,21 @@ class TaskEventResponse(BaseModel):
     status: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: str
+
+
+class TaskArtifactResponse(BaseModel):
+    artifact_id: str
+    task_id: str
+    session_id: str
+    context_id: str | None = None
+    a2a_artifact_id: str
+    name: str | None = None
+    description: str | None = None
+    parts: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    extensions: list[str] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
 
 
 class ModelConfigRequest(BaseModel):
@@ -191,6 +207,19 @@ def create_app(service: AgentService | None = None, *, enable_a2a: bool = False)
             raise _http_exception(SessionNotFoundError(session_id))
         return record.to_dict()
 
+    @api_router.delete("/sessions/{session_id}", status_code=204)
+    def delete_session(session_id: str) -> None:
+        try:
+            app.state.agent_service.delete_session(session_id)
+        except Exception as exc:
+            error = error_info_from_exception(exc)
+            if error.code.value == "invalid_session_state":
+                return JSONResponse(
+                    status_code=error.http_status,
+                    content={"code": error.code.value, "message": error.public_message},
+                )
+            raise _http_exception(exc) from exc
+
     @api_router.post("/sessions/{session_id}/tasks", response_model=TaskResponse)
     def start_task(session_id: str, request: TaskStartRequest) -> dict[str, Any]:
         try:
@@ -222,6 +251,25 @@ def create_app(service: AgentService | None = None, *, enable_a2a: bool = False)
             return [record.to_dict() for record in app.state.agent_service.list_task_events(task_id)]
         except Exception as exc:
             raise _http_exception(exc) from exc
+
+    @api_router.get("/tasks/{task_id}/artifacts", response_model=list[TaskArtifactResponse])
+    def list_task_artifacts(task_id: str) -> list[dict[str, Any]]:
+        try:
+            artifacts = app.state.agent_service.list_task_artifacts(task_id)
+            return [_local_api_artifact_payload(artifact) for artifact in _projectable_local_api_artifacts(artifacts)]
+        except Exception as exc:
+            raise _http_exception(exc) from exc
+
+    @api_router.get("/tasks/{task_id}/artifacts/{artifact_id}", response_model=TaskArtifactResponse)
+    def get_task_artifact(task_id: str, artifact_id: str) -> dict[str, Any]:
+        try:
+            artifacts = app.state.agent_service.list_task_artifacts(task_id)
+        except Exception as exc:
+            raise _http_exception(exc) from exc
+        for artifact in _projectable_local_api_artifacts(artifacts):
+            if artifact.artifact_id == artifact_id:
+                return _local_api_artifact_payload(artifact)
+        raise _http_exception(ArtifactNotFoundError(artifact_id))
 
     @api_router.get("/tasks/{task_id}/stream")
     async def stream_task_events(
@@ -342,3 +390,13 @@ def _format_sse_event(event: dict[str, Any]) -> str:
     event_type = event["event_type"]
     data = json.dumps(event, ensure_ascii=False, sort_keys=True)
     return f"id: {event_id}\nevent: {event_type}\ndata: {data}\n\n"
+
+
+def _projectable_local_api_artifacts(artifacts: list[TaskArtifactRecord]) -> list[TaskArtifactRecord]:
+    return [artifact for artifact in artifacts if is_projectable_to_local_api(artifact.metadata)]
+
+
+def _local_api_artifact_payload(artifact: TaskArtifactRecord) -> dict[str, Any]:
+    payload = artifact.to_dict()
+    payload["metadata"] = normalize_output_metadata(artifact.metadata)
+    return payload
