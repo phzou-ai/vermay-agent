@@ -778,6 +778,205 @@ def test_direct_model_router_model_parses_json_and_validates_remote_agent(tmp_pa
     }
 
 
+def test_direct_model_router_model_repairs_classifier_payload_with_tool_requirement():
+    model = FakeLangGraphModelClient(
+        contents=[
+            '{"classification":"infrastructure_monitoring","intent":"check_kubernetes_status","requires_tool":true}'
+        ]
+    )
+    router_model = DirectModelRouterModelClient(model, model_name="router-small")
+    request = MainAgentRequest(
+        context_id=None,
+        message_id="msg-user-1",
+        role=MessageRole.USER,
+        parts=[{"kind": "text", "text": "check k8s status"}],
+        metadata={"executionMode": "auto"},
+    )
+
+    decision = router_model.classify(
+        request=request,
+        messages=[
+            MessageRecord(
+                message_id="msg-user-1",
+                context_id="ctx-1",
+                role=MessageRole.USER,
+                parts=request.parts,
+                task_id=None,
+                metadata={},
+                created_at="2026-06-08T00:00:00Z",
+            )
+        ],
+        registered_agents=[],
+    )
+
+    assert decision.kind == RouteDecisionKind.LOCAL_TASK
+    assert decision.confidence == 0.75
+    assert decision.metadata["schemaRepair"] == "classifier_payload"
+    assert decision.metadata["model"] == "router-small"
+
+
+def test_direct_model_router_model_repairs_classifier_payload_with_tool_access_alias():
+    model = FakeLangGraphModelClient(
+        contents=['{"classification":"infrastructure_monitoring","requires_tool_access":true}']
+    )
+    router_model = DirectModelRouterModelClient(model, model_name="router-small")
+    request = MainAgentRequest(
+        context_id=None,
+        message_id="msg-user-1",
+        role=MessageRole.USER,
+        parts=[{"kind": "text", "text": "check k8s status"}],
+        metadata={"executionMode": "auto"},
+    )
+
+    decision = router_model.classify(
+        request=request,
+        messages=[
+            MessageRecord(
+                message_id="msg-user-1",
+                context_id="ctx-1",
+                role=MessageRole.USER,
+                parts=request.parts,
+                task_id=None,
+                metadata={},
+                created_at="2026-06-08T00:00:00Z",
+            )
+        ],
+        registered_agents=[],
+    )
+
+    assert decision.kind == RouteDecisionKind.LOCAL_TASK
+    assert decision.metadata["schemaRepair"] == "classifier_payload"
+
+
+def test_direct_model_router_model_repairs_classifier_payload_with_tool_name():
+    model = FakeLangGraphModelClient(
+        contents=['{"classification":"infrastructure_monitoring","requires_tool":"k8s_status_checker"}']
+    )
+    router_model = DirectModelRouterModelClient(model, model_name="router-small")
+    request = MainAgentRequest(
+        context_id=None,
+        message_id="msg-user-1",
+        role=MessageRole.USER,
+        parts=[{"kind": "text", "text": "check k8s status"}],
+        metadata={"executionMode": "auto"},
+    )
+
+    decision = router_model.classify(
+        request=request,
+        messages=[
+            MessageRecord(
+                message_id="msg-user-1",
+                context_id="ctx-1",
+                role=MessageRole.USER,
+                parts=request.parts,
+                task_id=None,
+                metadata={},
+                created_at="2026-06-08T00:00:00Z",
+            )
+        ],
+        registered_agents=[],
+    )
+
+    assert decision.kind == RouteDecisionKind.LOCAL_TASK
+    assert decision.metadata["schemaRepair"] == "classifier_payload"
+
+
+def test_direct_model_router_model_repairs_classifier_payload_for_joke_request():
+    model = FakeLangGraphModelClient(
+        contents=['{"classification":"entertainment_request","intent":"joke_request","category":"humor"}']
+    )
+    router_model = DirectModelRouterModelClient(model, model_name="router-small")
+    request = MainAgentRequest(
+        context_id=None,
+        message_id="msg-user-1",
+        role=MessageRole.USER,
+        parts=[{"kind": "text", "text": "tell me a joke"}],
+        metadata={"executionMode": "auto"},
+    )
+
+    decision = router_model.classify(
+        request=request,
+        messages=[
+            MessageRecord(
+                message_id="msg-user-1",
+                context_id="ctx-1",
+                role=MessageRole.USER,
+                parts=request.parts,
+                task_id=None,
+                metadata={},
+                created_at="2026-06-08T00:00:00Z",
+            )
+        ],
+        registered_agents=[],
+    )
+
+    assert decision.kind == RouteDecisionKind.LOCAL_MESSAGE
+    assert decision.confidence == 0.75
+    assert decision.metadata["schemaRepair"] == "classifier_payload"
+
+
+def test_direct_model_router_model_repairs_plain_classifier_label_for_joke_request():
+    model = FakeLangGraphModelClient(contents=["user_request_joke"])
+    router_model = DirectModelRouterModelClient(model, model_name="router-small")
+    request = MainAgentRequest(
+        context_id=None,
+        message_id="msg-user-1",
+        role=MessageRole.USER,
+        parts=[{"kind": "text", "text": "tell me a joke"}],
+        metadata={"executionMode": "auto"},
+    )
+
+    decision = router_model.classify(
+        request=request,
+        messages=[
+            MessageRecord(
+                message_id="msg-user-1",
+                context_id="ctx-1",
+                role=MessageRole.USER,
+                parts=request.parts,
+                task_id=None,
+                metadata={},
+                created_at="2026-06-08T00:00:00Z",
+            )
+        ],
+        registered_agents=[],
+    )
+
+    assert decision.kind == RouteDecisionKind.LOCAL_MESSAGE
+    assert decision.metadata["schemaRepair"] == "classifier_payload"
+
+
+def test_direct_model_router_model_repairs_plain_route_label():
+    model = FakeLangGraphModelClient(contents=["local_task"])
+    router_model = DirectModelRouterModelClient(model, model_name="router-small")
+    request = MainAgentRequest(
+        context_id=None,
+        message_id="msg-user-1",
+        role=MessageRole.USER,
+        parts=[{"kind": "text", "text": "check k8s status"}],
+        metadata={"executionMode": "auto"},
+    )
+
+    decision = router_model.classify(
+        request=request,
+        messages=[
+            MessageRecord(
+                message_id="msg-user-1",
+                context_id="ctx-1",
+                role=MessageRole.USER,
+                parts=request.parts,
+                task_id=None,
+                metadata={},
+                created_at="2026-06-08T00:00:00Z",
+            )
+        ],
+        registered_agents=[],
+    )
+
+    assert decision.kind == RouteDecisionKind.LOCAL_TASK
+    assert decision.metadata["schemaRepair"] == "classifier_payload"
+
+
 def test_main_agent_core_remote_route_requires_registered_enabled_agent_and_client(tmp_path):
     store = MainAgentStore(AgentStore(tmp_path / "agent.sqlite"))
     core = MainAgentCore(store=store, local_message_responder=FakeResponder())

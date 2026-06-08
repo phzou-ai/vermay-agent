@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from vermay_agent.app_factory import DEFAULT_AGENT_STORE_PATH, DEFAULT_MODEL_CONFIG_PATH, RuntimeFactoryConfig, build_runtime
 from vermay_agent.errors import error_info_from_exception
+from vermay_agent.env_config import load_prefixed_env
 from vermay_agent.langgraph_runtime import build_model_client
 from vermay_agent.main_agent import (
     DevMockLocalMessageResponder,
@@ -274,7 +275,7 @@ def _dev_mock_main_agent_enabled(value: bool | None) -> bool:
 
 
 def _router_model_name() -> str | None:
-    value = os.environ.get("VERMAY_AGENT_ROUTER_MODEL")
+    value = load_prefixed_env("VERMAY_AGENT_ROUTER_").get("VERMAY_AGENT_ROUTER_MODEL")
     if value is None:
         return None
     value = value.strip()

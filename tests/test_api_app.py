@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from fastapi.testclient import TestClient
 
-from vermay_agent.api.app import create_app
+from vermay_agent.api.app import _router_model_name, create_app
 from vermay_agent.api.service import AgentService
 from vermay_agent.api.session_store import SessionStore
 from vermay_agent.langgraph_runtime.results import RunResult
@@ -59,6 +59,17 @@ def test_api_health(tmp_path):
     assert response.json() == {"status": "ok"}
     service.close()
     store.close()
+
+
+def test_router_model_name_loads_env_local(tmp_path, monkeypatch):
+    monkeypatch.setattr("vermay_agent.env_config.ROOT", tmp_path)
+    (tmp_path / ".env.local").write_text(
+        "VERMAY_AGENT_ROUTER_MODEL=router-small\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("VERMAY_AGENT_ROUTER_MODEL", raising=False)
+
+    assert _router_model_name() == "router-small"
 
 
 def test_legacy_local_rest_routes_are_not_exposed(tmp_path):
