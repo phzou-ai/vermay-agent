@@ -73,6 +73,10 @@ class MainAgentStore:
     def touch_context(self, context_id: str) -> None:
         self.store.execute("UPDATE contexts SET updated_at=? WHERE context_id=?", (utc_now(), context_id))
 
+    def update_context_title(self, context_id: str, *, title: str | None) -> ContextRecord | None:
+        self.store.execute("UPDATE contexts SET title=? WHERE context_id=?", (title, context_id))
+        return self.get_context(context_id)
+
     def append_message(
         self,
         *,

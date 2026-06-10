@@ -81,6 +81,7 @@ def project_task(
             session_id=task.session_id,
             task_id=task.task_id,
             local_status=task.status.value,
+            thread_id=task.thread_id,
             attempt=task.attempt,
             root_task_id=task.root_task_id,
             retry_of_task_id=task.retry_of_task_id,
@@ -118,7 +119,9 @@ def project_task_event(event: TaskEventRecord) -> A2AProjection:
             task_id=event.task_id,
             event_id=event.event_id,
             event_type=event.event_type,
+            event_created_at=event.created_at,
             local_status=event.status,
+            thread_id=event.thread_id,
         ),
     }
     return A2AProjection(kind=A2AProjectionKind.STATUS_UPDATE, payload=payload)
@@ -155,7 +158,9 @@ def project_task_artifact_event(event: TaskEventRecord, *, artifact: TaskArtifac
             task_id=event.task_id,
             event_id=event.event_id,
             event_type=event.event_type,
+            event_created_at=event.created_at,
             local_status=event.status or "unknown",
+            thread_id=event.thread_id,
         ),
     }
     return A2AProjection(kind=A2AProjectionKind.ARTIFACT_UPDATE, payload=payload)
@@ -208,17 +213,21 @@ def _metadata(
     session_id: str,
     task_id: str,
     local_status: str,
+    thread_id: str | None = None,
     attempt: int | None = None,
     root_task_id: str | None = None,
     retry_of_task_id: str | None = None,
     event_id: int | None = None,
     event_type: str | None = None,
+    event_created_at: str | None = None,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "localSessionId": session_id,
         "localTaskId": task_id,
         "localStatus": local_status,
     }
+    if thread_id is not None:
+        metadata["localThreadId"] = thread_id
     if attempt is not None:
         metadata["localAttempt"] = attempt
     if root_task_id is not None:
@@ -229,4 +238,6 @@ def _metadata(
         metadata["localEventId"] = event_id
     if event_type is not None:
         metadata["localEventType"] = event_type
+    if event_created_at is not None:
+        metadata["localEventCreatedAt"] = event_created_at
     return metadata

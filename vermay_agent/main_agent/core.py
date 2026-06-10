@@ -39,7 +39,7 @@ class MainAgentCore:
     def handle_message(self, request: MainAgentRequest) -> MainAgentResult:
         if request.role != MessageRole.USER:
             raise ValueError("main agent request role must be user")
-        context_id = self._resolve_context_id(request.context_id)
+        context_id = self._resolve_context_id(request.context_id, title=_title_from_parts(request.parts))
         message_id = request.message_id or _new_id("msg")
         user_message = self.store.append_message(
             message_id=message_id,
@@ -76,13 +76,40 @@ class MainAgentCore:
             )
         raise ValueError(f"unsupported route decision: {route_decision.kind.value}")
 
-    def _resolve_context_id(self, context_id: str | None) -> str:
+    def _resolve_context_id(self, context_id: str | None, *, title: str | None = None) -> str:
         if context_id is None:
-            context = self.store.create_context(context_id=_new_id("ctx"))
+            context = self.store.create_context(context_id=_new_id("ctx"), title=title)
             return context.context_id
         if self.store.get_context(context_id) is None:
             raise ValueError(f"unknown context: {context_id}")
         return context_id
+
+    def resume_task(self, task_id: str, *, approved: bool, reason: str | None = None):
+        task = self.store.get_task(task_id)
+        if task is None:
+            raise ValueError(f"unknown task: {task_id}")
+        if task.status not in {TaskStatus.INPUT_REQUIRED, TaskStatus.AUTH_REQUIRED}:
+            raise ValueError(f"task is not waiting for approval: {task_id}")
+        if self.local_task_runner is None:
+            raise ValueError("local task runner is not configured")
+
+        self.store.append_task_event(
+            task_id=task_id,
+            type="task_resumed",
+            status=task.status,
+            payload={"approved": approved, **({"reason": reason} if reason else {})},
+        )
+        task = self.store.update_task_status(task_id, TaskStatus.RUNNING)
+        self.store.append_task_event(task_id=task_id, type="task_started", status=TaskStatus.RUNNING)
+        try:
+            result = self.local_task_runner.resume(
+                thread_id=task.runtime_thread_id,
+                approved=approved,
+                reason=reason,
+            )
+        except Exception as exc:
+            return self._mark_local_task_failed(task_id, exc)
+        return self._save_local_task_result(task_id, result)
 
     def _handle_local_message(
         self,
@@ -164,29 +191,27 @@ class MainAgentCore:
                 thread_id=task.runtime_thread_id,
             )
         except Exception as exc:
-            failed = self.store.update_task_status(
-                task_id,
-                TaskStatus.FAILED,
-                error_code=exc.__class__.__name__,
-                error_message=str(exc),
-            )
-            self.store.append_task_event(
-                task_id=task_id,
-                type="task_failed",
-                status=TaskStatus.FAILED,
-                payload={"error_code": failed.error_code, "error_message": failed.error_message},
-            )
-            return failed
+            return self._mark_local_task_failed(task_id, exc)
 
+        return self._save_local_task_result(
+            task_id,
+            result,
+            metadata={"routeDecisionId": route_decision_id},
+        )
+
+    def _save_local_task_result(self, task_id: str, result, *, metadata: dict | None = None):
+        task = self.store.get_task(task_id)
+        if task is None:
+            raise ValueError(f"unknown task: {task_id}")
         if result.status == TaskStatus.COMPLETED:
             assistant_message = self.store.append_message(
                 message_id=_new_id("msg"),
-                context_id=context_id,
+                context_id=task.context_id,
                 role=MessageRole.AGENT,
                 parts=result.parts,
                 task_id=task_id,
                 metadata={
-                    "routeDecisionId": route_decision_id,
+                    **(metadata or {}),
                     "routeKind": RouteDecisionKind.LOCAL_TASK.value,
                 },
             )
@@ -194,7 +219,7 @@ class MainAgentCore:
             artifact = self.store.upsert_artifact(
                 artifact_id=f"{task_id}:final_answer",
                 task_id=task_id,
-                context_id=context_id,
+                context_id=task.context_id,
                 parts=artifact_parts,
                 metadata={"kind": "final_answer", "outputMessageId": assistant_message.message_id},
             )
@@ -233,6 +258,21 @@ class MainAgentCore:
             TaskStatus.FAILED,
             error_code=result.error_code or "task_not_completed",
             error_message=result.error_message or f"local task ended with unsupported status: {result.status.value}",
+        )
+        self.store.append_task_event(
+            task_id=task_id,
+            type="task_failed",
+            status=TaskStatus.FAILED,
+            payload={"error_code": failed.error_code, "error_message": failed.error_message},
+        )
+        return failed
+
+    def _mark_local_task_failed(self, task_id: str, exc: Exception):
+        failed = self.store.update_task_status(
+            task_id,
+            TaskStatus.FAILED,
+            error_code=exc.__class__.__name__,
+            error_message=str(exc),
         )
         self.store.append_task_event(
             task_id=task_id,
@@ -399,3 +439,9 @@ def _task_result_error_payload(result: LocalTaskRunResult) -> dict:
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex}"
+
+
+def _title_from_parts(parts: list[dict]) -> str | None:
+    text = " ".join(str(part.get("text", "")).strip() for part in parts if isinstance(part.get("text"), str))
+    normalized = " ".join(text.split())
+    return normalized or None

@@ -45,6 +45,8 @@ def task_to_a2a_payload(task: TaskRecord) -> dict[str, Any]:
         "metadata": {
             "localContextId": task.context_id,
             "localTaskId": task.task_id,
+            "localThreadId": task.runtime_thread_id,
+            "runtimeThreadId": task.runtime_thread_id,
             "inputMessageId": task.input_message_id,
             "outputMessageId": task.output_message_id,
             "localStatus": task.status.value,
@@ -72,6 +74,9 @@ def task_event_to_a2a_status_update(event: TaskEventRecord, *, task: TaskRecord)
         "metadata": {
             "localEventId": event.event_id,
             "localEventType": event.type,
+            "localEventCreatedAt": event.created_at,
+            "localThreadId": task.runtime_thread_id,
+            "runtimeThreadId": task.runtime_thread_id,
             "localStatus": event.status.value,
         },
     }
@@ -101,6 +106,9 @@ def task_event_to_a2a_artifact_update(
         "metadata": {
             "localEventId": event.event_id,
             "localEventType": event.type,
+            "localEventCreatedAt": event.created_at,
             "localArtifactId": artifact.artifact_id,
+            "localThreadId": task.runtime_thread_id,
+            "runtimeThreadId": task.runtime_thread_id,
         },
     }

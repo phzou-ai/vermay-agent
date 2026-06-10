@@ -37,12 +37,20 @@ class FakeResponder:
 @dataclass
 class FakeTaskRunner:
     calls: list[tuple[list[MessageRecord], str]] = field(default_factory=list)
+    resume_calls: list[tuple[str, bool, str | None]] = field(default_factory=list)
 
     def run(self, messages: list[MessageRecord], *, thread_id: str) -> LocalTaskRunResult:
         self.calls.append((messages, thread_id))
         return LocalTaskRunResult(
             status=TaskStatus.COMPLETED,
             parts=[{"kind": "text", "text": "task answer"}],
+        )
+
+    def resume(self, *, thread_id: str, approved: bool, reason: str | None = None) -> LocalTaskRunResult:
+        self.resume_calls.append((thread_id, approved, reason))
+        return LocalTaskRunResult(
+            status=TaskStatus.COMPLETED,
+            parts=[{"kind": "text", "text": "resumed task answer"}],
         )
 
 
@@ -64,6 +72,16 @@ class FakeLangGraphModelClient:
     def invoke(self, messages: list, tools: list) -> ModelInvocation:
         self.calls.append(messages)
         return ModelInvocation(message=AIMessage(content=self.contents.pop(0)))
+
+
+@dataclass
+class FakeRouterRawJsonClient:
+    contents: list[str]
+    calls: list[tuple[str, str]] = field(default_factory=list)
+
+    def invoke_json(self, *, system_prompt: str, user_prompt: str) -> str:
+        self.calls.append((system_prompt, user_prompt))
+        return self.contents.pop(0)
 
 
 @dataclass
@@ -101,6 +119,53 @@ def test_main_agent_core_local_message_persists_messages_without_task(tmp_path):
     assert store.list_context_tasks(result.context_id) == []
     assert len(responder.calls) == 1
     assert [message.message_id for message in responder.calls[0]] == ["msg-user-1"]
+
+
+def test_main_agent_core_new_context_title_uses_first_user_input(tmp_path):
+    store = MainAgentStore(AgentStore(tmp_path / "agent.sqlite"))
+    core = MainAgentCore(store=store, local_message_responder=FakeResponder())
+
+    result = core.handle_message(
+        MainAgentRequest(
+            context_id=None,
+            message_id="msg-user-1",
+            role=MessageRole.USER,
+            parts=[{"kind": "text", "text": "  Check   k8s status\nagain  "}],
+            metadata={"executionMode": "message"},
+        )
+    )
+
+    context = store.get_context(result.context_id)
+    assert context is not None
+    assert context.title == "Check k8s status again"
+
+
+def test_main_agent_core_existing_context_keeps_original_title(tmp_path):
+    store = MainAgentStore(AgentStore(tmp_path / "agent.sqlite"))
+    core = MainAgentCore(store=store, local_message_responder=FakeResponder())
+
+    first = core.handle_message(
+        MainAgentRequest(
+            context_id=None,
+            message_id="msg-user-1",
+            role=MessageRole.USER,
+            parts=[{"kind": "text", "text": "first question"}],
+            metadata={"executionMode": "message"},
+        )
+    )
+    core.handle_message(
+        MainAgentRequest(
+            context_id=first.context_id,
+            message_id="msg-user-2",
+            role=MessageRole.USER,
+            parts=[{"kind": "text", "text": "second question"}],
+            metadata={"executionMode": "message"},
+        )
+    )
+
+    context = store.get_context(first.context_id)
+    assert context is not None
+    assert context.title == "first question"
 
 
 def test_main_agent_core_local_message_receives_same_context_history(tmp_path):
@@ -357,6 +422,69 @@ def test_main_agent_core_local_task_runner_can_leave_task_running(tmp_path):
     assert [event.type for event in store.list_task_events(result.task_id)] == [
         "task_created",
         "task_started",
+    ]
+
+
+def test_main_agent_core_local_task_runner_can_resume_input_required_task(tmp_path):
+    class ApprovalRunner:
+        resume_calls: list[tuple[str, bool, str | None]]
+
+        def __init__(self) -> None:
+            self.resume_calls = []
+
+        def run(self, messages: list[MessageRecord], *, thread_id: str) -> LocalTaskRunResult:
+            return LocalTaskRunResult(
+                status=TaskStatus.INPUT_REQUIRED,
+                parts=[{"kind": "text", "text": "approval required"}],
+                error_code="input_required",
+                error_message="approval required",
+            )
+
+        def resume(self, *, thread_id: str, approved: bool, reason: str | None = None) -> LocalTaskRunResult:
+            self.resume_calls.append((thread_id, approved, reason))
+            return LocalTaskRunResult(
+                status=TaskStatus.COMPLETED,
+                parts=[{"kind": "text", "text": "approved answer"}],
+            )
+
+    store = MainAgentStore(AgentStore(tmp_path / "agent.sqlite"))
+    runner = ApprovalRunner()
+    core = MainAgentCore(
+        store=store,
+        local_message_responder=FakeResponder(),
+        local_task_runner=runner,
+    )
+    context = store.create_context(context_id="ctx-1")
+
+    result = core.handle_message(
+        MainAgentRequest(
+            context_id=context.context_id,
+            message_id="msg-user-1",
+            role=MessageRole.USER,
+            parts=[{"kind": "text", "text": "delete pod"}],
+            metadata={"executionMode": "task"},
+        )
+    )
+
+    task = store.get_task(result.task_id)
+    assert task is not None
+    assert task.status == TaskStatus.INPUT_REQUIRED
+    assert task.output_message_id is None
+
+    resumed = core.resume_task(result.task_id, approved=True, reason="operator approved")
+
+    assert resumed.status == TaskStatus.COMPLETED
+    assert resumed.output_message_id is not None
+    assert runner.resume_calls == [(task.runtime_thread_id, True, "operator approved")]
+    assert store.get_message(resumed.output_message_id).parts == [{"kind": "text", "text": "approved answer"}]
+    assert [event.type for event in store.list_task_events(result.task_id)] == [
+        "task_created",
+        "task_started",
+        "task_interrupted",
+        "task_resumed",
+        "task_started",
+        "task_artifact_created",
+        "task_completed",
     ]
 
 
@@ -776,6 +904,48 @@ def test_direct_model_router_model_parses_json_and_validates_remote_agent(tmp_pa
         "model": "router-small",
         "modelReason": "Kubernetes specialist owns this.",
     }
+
+
+def test_direct_model_router_model_uses_raw_json_client_without_agent_action_parser():
+    raw_client = FakeRouterRawJsonClient(
+        contents=[
+            '{"route":"local_message","confidence":0.99,"reason":"Simple chat request.","targetAgentId":null}'
+        ]
+    )
+    router_model = DirectModelRouterModelClient(raw_json_client=raw_client, model_name="router-small")
+    request = MainAgentRequest(
+        context_id=None,
+        message_id="msg-user-1",
+        role=MessageRole.USER,
+        parts=[{"kind": "text", "text": "tell me a joke"}],
+        metadata={"executionMode": "auto"},
+    )
+
+    decision = router_model.classify(
+        request=request,
+        messages=[
+            MessageRecord(
+                message_id="msg-user-1",
+                context_id="ctx-1",
+                role=MessageRole.USER,
+                parts=request.parts,
+                task_id=None,
+                metadata={},
+                created_at="2026-06-08T00:00:00Z",
+            )
+        ],
+        registered_agents=[],
+    )
+
+    assert decision.kind == RouteDecisionKind.LOCAL_MESSAGE
+    assert decision.confidence == 0.99
+    assert decision.reason == "Simple chat request."
+    assert decision.metadata == {
+        "source": "model",
+        "model": "router-small",
+        "modelReason": "Simple chat request.",
+    }
+    assert raw_client.calls
 
 
 def test_direct_model_router_model_repairs_classifier_payload_with_tool_requirement():

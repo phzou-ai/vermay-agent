@@ -286,16 +286,25 @@ The A2A routes project main-agent context, message, task, event, delegation, and
 
 ## Model Configuration
 
-The runtime selects a configured model from `config/models.json`. The file defines a `primary_model` and a map of named model configurations:
+The runtime selects configured models from `config/models.json`. The file defines a `primary_model`, an optional `router_model`, and a map of named model configurations:
 
 ```json
 {
   "primary_model": "local_ollama",
+  "router_model": "ollama_gemma4_31b",
   "models": {
     "local_ollama": {
       "provider": "ollama",
       "options": {
         "model": "deepseek-v4-flash:cloud",
+        "base_url": "http://127.0.0.1:11434",
+        "timeout_seconds": 120
+      }
+    },
+    "ollama_gemma4_31b": {
+      "provider": "ollama",
+      "options": {
+        "model": "gemma4:31b-cloud",
         "base_url": "http://127.0.0.1:11434",
         "timeout_seconds": 120
       }
@@ -312,6 +321,8 @@ The runtime selects a configured model from `config/models.json`. The file defin
   }
 }
 ```
+
+`primary_model` is used for normal local message and task execution. `router_model` is used by the main-agent auto router. If `router_model` is omitted, the router falls back to `primary_model`. `VERMAY_AGENT_ROUTER_MODEL` can temporarily override `router_model` for local development or deployment-specific routing tests.
 
 Use the primary model:
 

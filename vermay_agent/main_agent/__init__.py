@@ -36,7 +36,9 @@ from .router import (
     MainAgentRouter,
     RouterModelClient,
     RouterModelDecision,
+    RouterRawJsonClient,
 )
+from .router_json_client import RouterJsonHttpClient, build_router_json_client
 from .store import MainAgentStore
 from .task_runner import DirectLangGraphLocalTaskRunner, LocalTaskRunner, LocalTaskRunResult
 
@@ -75,9 +77,12 @@ __all__ = [
     "RouteDecisionRecord",
     "RouterModelClient",
     "RouterModelDecision",
+    "RouterRawJsonClient",
+    "RouterJsonHttpClient",
     "TaskEventRecord",
     "TaskRecord",
     "TaskStatus",
     "build_dev_mock_runtime",
+    "build_router_json_client",
     "fetch_agent_card",
 ]

@@ -195,9 +195,11 @@ skills/*.md
 
 ## Model Configuration
 
-The runtime selects a configured model from `config/models.json` by default. The config defines a `primary_model` and a map of named model provider configurations.
+The runtime selects configured models from `config/models.json` by default. The config defines a `primary_model`, an optional `router_model`, and a map of named model provider configurations.
 
 Ollama model settings live in `config/models.json` under the selected model's `options`.
+
+`primary_model` is used for normal local message and task execution. `router_model` is used by the main-agent auto router. If `router_model` is omitted, the router falls back to `primary_model`. `VERMAY_AGENT_ROUTER_MODEL` can temporarily override `router_model` without changing the file.
 
 Use the primary model:
 

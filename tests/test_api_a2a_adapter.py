@@ -57,6 +57,32 @@ class FakeLocalTaskRunner:
             parts=[{"kind": "text", "text": "task answer"}],
         )
 
+    def resume(self, *, thread_id: str, approved: bool, reason: str | None = None) -> LocalTaskRunResult:
+        return LocalTaskRunResult(
+            status=MainAgentTaskStatus.COMPLETED,
+            parts=[{"kind": "text", "text": "resumed task answer"}],
+        )
+
+
+class FakeApprovalTaskRunner:
+    def __init__(self) -> None:
+        self.resume_calls = []
+
+    def run(self, messages: list[MessageRecord], *, thread_id: str) -> LocalTaskRunResult:
+        return LocalTaskRunResult(
+            status=MainAgentTaskStatus.INPUT_REQUIRED,
+            parts=[{"kind": "text", "text": "approval required"}],
+            error_code="input_required",
+            error_message="approval required",
+        )
+
+    def resume(self, *, thread_id: str, approved: bool, reason: str | None = None) -> LocalTaskRunResult:
+        self.resume_calls.append((thread_id, approved, reason))
+        return LocalTaskRunResult(
+            status=MainAgentTaskStatus.COMPLETED,
+            parts=[{"kind": "text", "text": "approved answer"}],
+        )
+
 
 class FakeRemoteAgentClient:
     def __init__(self, responses, *, task_snapshots=None, cancel_snapshots=None) -> None:
@@ -1219,6 +1245,71 @@ def test_a2a_rpc_get_and_cancel_task_support_pascal_case_methods(tmp_path):
     assert canceled.json()["result"]["id"] == task_id
     assert canceled.json()["result"]["status"]["state"] == "canceled"
     assert main_store.list_task_events(task_id)[-1].payload == {"reason": "operator"}
+    service.close()
+    agent_store.close()
+
+
+def test_a2a_rpc_resume_task_supports_pascal_case_method(tmp_path):
+    agent_store = AgentStore(tmp_path / "agent.sqlite")
+    main_store = MainAgentStore(agent_store)
+    runner = FakeApprovalTaskRunner()
+    core = MainAgentCore(
+        store=main_store,
+        local_message_responder=FakeLocalMessageResponder(),
+        local_task_runner=runner,
+    )
+    service = AgentService(
+        session_store=SessionStore(agent_store),
+        runtime_builder=lambda config: FakeRuntime([completed("unused")]),
+    )
+    client = TestClient(create_app(service=service, enable_a2a=True, main_agent_core=core))
+
+    sent = client.post(
+        "/rpc",
+        json={
+            "jsonrpc": "2.0",
+            "id": "rpc-task-1",
+            "method": "SendMessage",
+            "params": {
+                "message": {
+                    "kind": "message",
+                    "role": "user",
+                    "messageId": "msg-user-1",
+                    "parts": [{"kind": "text", "text": "delete pod"}],
+                },
+                "metadata": {"executionMode": "task"},
+            },
+        },
+    )
+    task_id = sent.json()["result"]["id"]
+    task = main_store.get_task(task_id)
+    assert task is not None
+    assert task.status == MainAgentTaskStatus.INPUT_REQUIRED
+
+    resumed = client.post(
+        "/rpc",
+        json={
+            "jsonrpc": "2.0",
+            "id": "rpc-resume-1",
+            "method": "ResumeTask",
+            "params": {"id": task_id, "approved": True, "reason": "operator"},
+        },
+    )
+
+    assert resumed.status_code == 200
+    assert resumed.json()["id"] == "rpc-resume-1"
+    assert resumed.json()["result"]["id"] == task_id
+    assert resumed.json()["result"]["status"]["state"] == "completed"
+    assert runner.resume_calls == [(task.runtime_thread_id, True, "operator")]
+    assert [event.type for event in main_store.list_task_events(task_id)] == [
+        "task_created",
+        "task_started",
+        "task_interrupted",
+        "task_resumed",
+        "task_started",
+        "task_artifact_created",
+        "task_completed",
+    ]
     service.close()
     agent_store.close()
 

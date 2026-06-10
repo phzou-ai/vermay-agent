@@ -44,7 +44,7 @@ def test_a2a_terminal_state_helper():
     assert is_terminal_a2a_state("unknown") is False
 
 
-def test_project_task_uses_context_id_and_omits_thread_id_from_payload():
+def test_project_task_uses_context_id_and_keeps_thread_id_in_metadata_only():
     task = _task(status=TaskStatus.RUNNING)
 
     projection = project_task(task, context_id="ctx-1")
@@ -62,12 +62,12 @@ def test_project_task_uses_context_id_and_omits_thread_id_from_payload():
             "localSessionId": "session-1",
             "localTaskId": "task-1",
             "localStatus": "running",
+            "localThreadId": "thread-1",
             "localAttempt": 1,
             "localRootTaskId": "task-1",
         },
     }
     assert "thread_id" not in str(projection.payload)
-    assert "thread-1" not in str(projection.payload)
 
 
 def test_project_task_falls_back_to_session_id_as_context_id():
@@ -100,7 +100,7 @@ def test_project_retry_task_includes_local_lineage_metadata():
     assert metadata["localRetryOfTaskId"] == "task-1"
 
 
-def test_project_task_can_include_artifacts_without_thread_id():
+def test_project_task_can_include_projectable_artifacts():
     task = _task(status=TaskStatus.COMPLETED)
     artifact = _artifact()
 
@@ -119,7 +119,6 @@ def test_project_task_can_include_artifacts_without_thread_id():
         }
     ]
     assert "task-1:final_answer" not in str(projection.payload)
-    assert "thread-1" not in str(projection.payload)
 
 
 def test_project_task_omits_non_projectable_artifacts():
@@ -158,11 +157,12 @@ def test_project_task_event_maps_status_update():
             "localSessionId": "session-1",
             "localTaskId": "task-1",
             "localStatus": "queued",
+            "localThreadId": "thread-1",
             "localEventId": 7,
             "localEventType": "task_queued",
+            "localEventCreatedAt": "2026-06-03T00:00:02+00:00",
         },
     }
-    assert "thread-1" not in str(projection.payload)
 
 
 def test_project_task_event_keeps_internal_events_out_of_status_stream():
@@ -243,12 +243,13 @@ def test_project_task_artifact_event_maps_artifact_update():
             "localSessionId": "session-1",
             "localTaskId": "task-1",
             "localStatus": "completed",
+            "localThreadId": "thread-1",
             "localEventId": 7,
             "localEventType": "task_artifact_created",
+            "localEventCreatedAt": "2026-06-03T00:00:02+00:00",
         },
     }
     assert "task-1:final_answer" not in str(projection.payload)
-    assert "thread-1" not in str(projection.payload)
 
 
 def test_project_task_artifact_event_keeps_non_projectable_artifact_internal():

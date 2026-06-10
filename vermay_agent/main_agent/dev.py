@@ -23,6 +23,14 @@ class DevMockLocalTaskRunner:
             parts=[{"kind": "text", "text": f"Dev mock task completed: {text}"}],
         )
 
+    def resume(self, *, thread_id: str, approved: bool, reason: str | None = None) -> LocalTaskRunResult:
+        status = "approved" if approved else "rejected"
+        detail = f": {reason}" if reason else ""
+        return LocalTaskRunResult(
+            status=TaskStatus.COMPLETED,
+            parts=[{"kind": "text", "text": f"Dev mock task resume {status}{detail}"}],
+        )
+
     def close(self) -> None:
         return None
 

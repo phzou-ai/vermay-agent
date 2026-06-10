@@ -23,6 +23,9 @@ class LocalTaskRunner(Protocol):
     def run(self, messages: list[MessageRecord], *, thread_id: str) -> LocalTaskRunResult:
         """Run a local task with bounded context history."""
 
+    def resume(self, *, thread_id: str, approved: bool, reason: str | None = None) -> LocalTaskRunResult:
+        """Resume a paused local task after human approval input."""
+
 
 class DirectLangGraphLocalTaskRunner:
     def __init__(self, runtime: LangGraphAgentRuntime | None = None) -> None:
@@ -33,25 +36,34 @@ class DirectLangGraphLocalTaskRunner:
         user_input = _task_input_from_messages(messages)
         with self._lock:
             result = self.runtime.start(user_input, thread_id=thread_id)
-        if result.status == "completed":
-            parts = [{"kind": "text", "text": result.final_answer or ""}]
-            return LocalTaskRunResult(status=TaskStatus.COMPLETED, parts=parts)
-        if result.status == "interrupted":
-            parts = [{"kind": "text", "text": result.interrupt_message or "Approval required."}]
-            return LocalTaskRunResult(
-                status=TaskStatus.INPUT_REQUIRED,
-                parts=parts,
-                error_code="input_required",
-                error_message=result.interrupt_message,
-            )
-        return LocalTaskRunResult(
-            status=TaskStatus.FAILED,
-            error_code=result.status,
-            error_message=result.stop_message or "Local task did not complete.",
-        )
+        return _run_result_to_local_task_result(result)
+
+    def resume(self, *, thread_id: str, approved: bool, reason: str | None = None) -> LocalTaskRunResult:
+        with self._lock:
+            result = self.runtime.resume(thread_id=thread_id, approved=approved, reason=reason)
+        return _run_result_to_local_task_result(result)
 
     def close(self) -> None:
         self.runtime.close()
+
+
+def _run_result_to_local_task_result(result) -> LocalTaskRunResult:
+    if result.status == "completed":
+        parts = [{"kind": "text", "text": result.final_answer or ""}]
+        return LocalTaskRunResult(status=TaskStatus.COMPLETED, parts=parts)
+    if result.status == "interrupted":
+        parts = [{"kind": "text", "text": result.interrupt_message or "Approval required."}]
+        return LocalTaskRunResult(
+            status=TaskStatus.INPUT_REQUIRED,
+            parts=parts,
+            error_code="input_required",
+            error_message=result.interrupt_message,
+        )
+    return LocalTaskRunResult(
+        status=TaskStatus.FAILED,
+        error_code=result.status,
+        error_message=result.stop_message or "Local task did not complete.",
+    )
 
 
 def _task_input_from_messages(messages: list[MessageRecord]) -> str:

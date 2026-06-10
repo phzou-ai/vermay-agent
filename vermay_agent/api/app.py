@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
@@ -22,10 +23,17 @@ from vermay_agent.main_agent import (
     DefaultMainAgentRouter,
     MainAgentCore,
     MainAgentStore,
+    MessageRole,
     build_dev_mock_runtime,
+    build_router_json_client,
     fetch_agent_card,
 )
-from vermay_agent.model_selection import resolve_model_selection
+from vermay_agent.model_selection import (
+    NamedModelSelection,
+    resolve_model_selection,
+    resolve_named_model_selection,
+    resolve_named_router_model_selection,
+)
 from vermay_agent.storage import AgentStore
 from vermay_agent.trace import TraceLogger
 
@@ -53,6 +61,25 @@ class RegisteredAgentResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str
     updated_at: str
+
+
+class ModelSelectionResponse(BaseModel):
+    name: str
+    provider: str
+    model: str | None = None
+    base_url: str | None = None
+    timeout_seconds: int | float | str | None = None
+
+
+class ModelConfigResponse(BaseModel):
+    primary_model: ModelSelectionResponse
+    router_model: ModelSelectionResponse
+    router_model_overridden: bool = False
+    config_path: str
+
+
+class ContextUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
 
 
 def create_app(
@@ -85,16 +112,12 @@ def create_app(
                 local_message_responder = DirectModelLocalMessageResponder(build_model_client(active_model))
                 owned_task_runner = DirectLangGraphLocalTaskRunner(build_runtime(default_config))
             router = None
-            router_model_name = _router_model_name()
-            if router_model_name and not use_dev_mock_main_agent:
-                router_model_config = resolve_model_selection(
-                    config_path=DEFAULT_MODEL_CONFIG_PATH,
-                    model_name=router_model_name,
-                )
+            if not use_dev_mock_main_agent:
+                router_model = _router_model_selection()
                 router = DefaultMainAgentRouter(
                     router_model=DirectModelRouterModelClient(
-                        build_model_client(router_model_config),
-                        model_name=router_model_name,
+                        raw_json_client=build_router_json_client(router_model.config),
+                        model_name=router_model.name,
                     )
                 )
             main_agent_core = MainAgentCore(
@@ -147,7 +170,25 @@ def create_app(
     @api_router.get("/contexts")
     def list_contexts() -> list[dict[str, Any]]:
         core = _main_agent_core(app)
-        return [_context_to_dict(record) for record in core.store.list_contexts()]
+        return [_context_to_dict(record, store=core.store) for record in core.store.list_contexts()]
+
+    @api_router.get("/model-config", response_model=ModelConfigResponse)
+    def get_model_config() -> dict[str, Any]:
+        router_override = _router_model_name_override()
+        try:
+            primary_model = resolve_named_model_selection(config_path=DEFAULT_MODEL_CONFIG_PATH)
+            router_model = resolve_named_router_model_selection(
+                config_path=DEFAULT_MODEL_CONFIG_PATH,
+                model_name=router_override,
+            )
+        except Exception as exc:
+            raise _http_exception(exc) from exc
+        return {
+            "primary_model": _model_selection_to_dict(primary_model),
+            "router_model": _model_selection_to_dict(router_model),
+            "router_model_overridden": router_override is not None,
+            "config_path": str(DEFAULT_MODEL_CONFIG_PATH),
+        }
 
     @api_router.get("/contexts/{context_id}")
     def get_context(context_id: str) -> dict[str, Any]:
@@ -155,7 +196,23 @@ def create_app(
         record = core.store.get_context(context_id)
         if record is None:
             raise HTTPException(status_code=404, detail={"code": "context_not_found", "message": "context not found"})
-        return _context_to_dict(record)
+        return _context_to_dict(record, store=core.store)
+
+    @api_router.patch("/contexts/{context_id}")
+    def update_context(context_id: str, request: ContextUpdateRequest) -> dict[str, Any]:
+        core = _main_agent_core(app)
+        if core.store.get_context(context_id) is None:
+            raise HTTPException(status_code=404, detail={"code": "context_not_found", "message": "context not found"})
+        title = _normalize_title_text(request.title)
+        if title is None:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "invalid_context_title", "message": "context title must be non-empty"},
+            )
+        record = core.store.update_context_title(context_id, title=title)
+        if record is None:
+            raise HTTPException(status_code=404, detail={"code": "context_not_found", "message": "context not found"})
+        return _context_to_dict(record, store=core.store)
 
     @api_router.get("/contexts/{context_id}/messages")
     def list_context_messages(context_id: str, limit: int | None = Query(default=None, ge=1)) -> list[dict[str, Any]]:
@@ -274,12 +331,36 @@ def _dev_mock_main_agent_enabled(value: bool | None) -> bool:
     return _truthy_env(os.environ.get("VERMAY_AGENT_DEV_MOCK_MAIN_AGENT"))
 
 
-def _router_model_name() -> str | None:
+def _router_model_name(config_path: Path = DEFAULT_MODEL_CONFIG_PATH) -> str:
+    return _router_model_selection(config_path=config_path).name
+
+
+def _router_model_selection(config_path: Path = DEFAULT_MODEL_CONFIG_PATH) -> NamedModelSelection:
+    return resolve_named_router_model_selection(config_path=config_path, model_name=_router_model_name_override())
+
+
+def _router_model_name_override() -> str | None:
     value = load_prefixed_env("VERMAY_AGENT_ROUTER_").get("VERMAY_AGENT_ROUTER_MODEL")
     if value is None:
         return None
     value = value.strip()
     return value or None
+
+
+def _model_selection_to_dict(selection: NamedModelSelection) -> dict[str, Any]:
+    options = selection.config.options
+    return {
+        "name": selection.name,
+        "provider": selection.config.provider,
+        "model": _optional_option_string(options, "model"),
+        "base_url": _optional_option_string(options, "base_url"),
+        "timeout_seconds": options.get("timeout_seconds"),
+    }
+
+
+def _optional_option_string(options: dict[str, Any], key: str) -> str | None:
+    value = options.get(key)
+    return value if isinstance(value, str) else None
 
 
 def _truthy_env(value: str | None) -> bool:
@@ -306,14 +387,33 @@ def _main_agent_core(app: FastAPI) -> MainAgentCore:
     return core
 
 
-def _context_to_dict(record) -> dict[str, Any]:
+def _context_to_dict(record, *, store: MainAgentStore | None = None) -> dict[str, Any]:
     return {
         "context_id": record.context_id,
-        "title": record.title,
+        "title": record.title or _first_user_message_title(record.context_id, store=store),
         "metadata": record.metadata,
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
+
+
+def _first_user_message_title(context_id: str, *, store: MainAgentStore | None) -> str | None:
+    if store is None:
+        return None
+    for message in store.list_context_messages(context_id):
+        if message.role == MessageRole.USER:
+            return _title_from_parts(message.parts)
+    return None
+
+
+def _title_from_parts(parts: list[dict[str, Any]]) -> str | None:
+    text = " ".join(str(part.get("text", "")).strip() for part in parts if isinstance(part.get("text"), str))
+    return _normalize_title_text(text)
+
+
+def _normalize_title_text(value: str) -> str | None:
+    normalized = " ".join(value.split())
+    return normalized or None
 
 
 def _message_to_dict(record) -> dict[str, Any]:

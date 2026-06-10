@@ -54,9 +54,24 @@ class RouterModelClient(Protocol):
         """Classify an auto-mode message into a main-agent route."""
 
 
+class RouterRawJsonClient(Protocol):
+    def invoke_json(self, *, system_prompt: str, user_prompt: str) -> str:
+        """Return the raw model content for a JSON-only router classification."""
+
+
 class DirectModelRouterModelClient:
-    def __init__(self, model: ModelClient, *, confidence_threshold: float = 0.65, model_name: str | None = None) -> None:
+    def __init__(
+        self,
+        model: ModelClient | None = None,
+        *,
+        raw_json_client: RouterRawJsonClient | None = None,
+        confidence_threshold: float = 0.65,
+        model_name: str | None = None,
+    ) -> None:
+        if model is None and raw_json_client is None:
+            raise ValueError("DirectModelRouterModelClient requires model or raw_json_client")
         self.model = model
+        self.raw_json_client = raw_json_client
         self.confidence_threshold = confidence_threshold
         self.model_name = model_name
 
@@ -67,14 +82,20 @@ class DirectModelRouterModelClient:
         messages: list[MessageRecord],
         registered_agents: list[RegisteredAgentRecord],
     ) -> RouterModelDecision:
-        invocation = self.model.invoke(
-            messages=[
-                SystemMessage(content=_router_system_prompt(registered_agents)),
-                HumanMessage(content=_router_user_prompt(messages)),
-            ],
-            tools=[],
-        )
-        raw_content = _string_content(invocation.message.content)
+        system_prompt = _router_system_prompt(registered_agents)
+        user_prompt = _router_user_prompt(messages)
+        if self.raw_json_client is not None:
+            raw_content = self.raw_json_client.invoke_json(system_prompt=system_prompt, user_prompt=user_prompt)
+        else:
+            assert self.model is not None
+            invocation = self.model.invoke(
+                messages=[
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ],
+                tools=[],
+            )
+            raw_content = _string_content(invocation.message.content)
         try:
             payload = _extract_json_object(raw_content)
             decision = _router_model_decision_from_payload(payload, registered_agents=registered_agents)

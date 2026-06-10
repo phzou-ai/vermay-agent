@@ -1,10 +1,43 @@
 {
   "primary_model": "local_ollama",
+  "router_model": "ollama_gemma4_31b",
   "models": {
     "local_ollama": {
       "provider": "ollama",
       "options": {
         "model": "deepseek-v4-flash:cloud",
+        "base_url": "http://127.0.0.1:11434",
+        "timeout_seconds": 120
+      }
+    },
+    "ollama_gemma4_31b": {
+      "provider": "ollama",
+      "options": {
+        "model": "gemma4:31b-cloud",
+        "base_url": "http://127.0.0.1:11434",
+        "timeout_seconds": 120
+      }
+    },
+    "ollama_minimax-m3": {
+      "provider": "ollama",
+      "options": {
+        "model": "minimax-m3:cloud",
+        "base_url": "http://127.0.0.1:11434",
+        "timeout_seconds": 120
+      }
+    },
+    "ollama_nemotron-3-ultra_550b": {
+      "provider": "ollama",
+      "options": {
+        "model": "nemotron-3-ultra:cloud",
+        "base_url": "http://127.0.0.1:11434",
+        "timeout_seconds": 120
+      }
+    },
+    "ollama_qwen3.5_397b": {
+      "provider": "ollama",
+      "options": {
+        "model": "qwen3.5:397b-cloud",
         "base_url": "http://127.0.0.1:11434",
         "timeout_seconds": 120
       }

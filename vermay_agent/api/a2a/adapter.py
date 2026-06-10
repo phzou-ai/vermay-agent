@@ -136,6 +136,17 @@ class A2AAdapter:
         task = self.service.cancel_task(task_id, reason=reason)
         return self.project_task(task)
 
+    def resume_task(self, task_id: str, *, approved: bool, reason: str | None = None) -> dict[str, Any]:
+        main_task = self._get_main_agent_task(task_id)
+        if main_task is not None:
+            delegation = self.main_agent_core.store.get_delegated_task_by_local_task_id(task_id)
+            if delegation is not None:
+                raise InvalidSessionStateError(f"delegated task resume is not supported yet: {task_id}")
+            updated = self.main_agent_core.resume_task(task_id, approved=approved, reason=reason)
+            return _jsonrpc_success(f"resume-{task_id}", task_to_a2a_payload(updated))
+        task = self.service.resume_task(task_id, approved=approved, reason=reason)
+        return self.project_task(task)
+
     def project_task(self, task: TaskRecord) -> dict[str, Any]:
         session = self.service.get_session(task.session_id)
         artifacts = self.service.list_task_artifacts(task.task_id)

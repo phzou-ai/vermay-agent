@@ -198,6 +198,17 @@ def test_main_agent_store_delete_context_requires_force_for_active_tasks(tmp_pat
     assert store.get_context("ctx-1") is None
 
 
+def test_main_agent_store_updates_context_title_without_reordering_timestamp(tmp_path):
+    store = MainAgentStore(AgentStore(tmp_path / "agent.sqlite"))
+    context = store.create_context(context_id="ctx-1", title="Original")
+
+    updated = store.update_context_title("ctx-1", title="Renamed")
+
+    assert updated is not None
+    assert updated.title == "Renamed"
+    assert updated.updated_at == context.updated_at
+
+
 def test_main_agent_store_registered_agents_and_delegations(tmp_path):
     store = MainAgentStore(AgentStore(tmp_path / "agent.sqlite"))
     registered = store.upsert_registered_agent(

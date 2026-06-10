@@ -48,6 +48,27 @@ def create_a2a_router(adapter: A2AAdapter) -> APIRouter:
                         message="JSON-RPC params.reason must be a string.",
                     )
                 return _jsonrpc_success_payload(request_id, adapter.cancel_task(task_id, reason=reason))
+            if method in {"ResumeTask", "tasks/resume"}:
+                params = _rpc_params(payload)
+                task_id = _rpc_task_id(params)
+                approved = params.get("approved")
+                if not isinstance(approved, bool):
+                    return _jsonrpc_protocol_error_response(
+                        request_id,
+                        code=-32602,
+                        message="JSON-RPC params.approved must be a boolean.",
+                    )
+                reason = params.get("reason")
+                if reason is not None and not isinstance(reason, str):
+                    return _jsonrpc_protocol_error_response(
+                        request_id,
+                        code=-32602,
+                        message="JSON-RPC params.reason must be a string.",
+                    )
+                return _jsonrpc_success_payload(
+                    request_id,
+                    adapter.resume_task(task_id, approved=approved, reason=reason),
+                )
             if method in {"SendStreamingMessage", "message/stream"}:
                 return _a2a_sse_response(_rpc_stream_message_events(adapter, payload))
             if method in {"SubscribeToTask", "tasks/subscribe"}:
@@ -133,6 +154,28 @@ def create_a2a_router(adapter: A2AAdapter) -> APIRouter:
             )
         except Exception as exc:
             if cancel_request.jsonrpc:
+                return _jsonrpc_error_response(request_id, exc)
+            raise _a2a_http_exception(exc) from exc
+
+    @router.post("/tasks/{task_id}:resume", response_model=None)
+    async def resume_task(task_id: str, request: Request) -> dict[str, Any] | JSONResponse:
+        resume_request = await _parse_resume_request(request, route_task_id=task_id)
+        request_id = resume_request.request_id if resume_request.jsonrpc else f"resume-{task_id}"
+        if resume_request.error is not None:
+            if resume_request.jsonrpc:
+                return _jsonrpc_error_response(request_id, resume_request.error)
+            raise _a2a_http_exception(resume_request.error)
+        try:
+            return _jsonrpc_success_payload(
+                request_id,
+                adapter.resume_task(
+                    task_id,
+                    approved=resume_request.approved,
+                    reason=resume_request.reason,
+                ),
+            )
+        except Exception as exc:
+            if resume_request.jsonrpc:
                 return _jsonrpc_error_response(request_id, exc)
             raise _a2a_http_exception(exc) from exc
 
@@ -299,6 +342,23 @@ class _CancelRequest:
         self.jsonrpc = jsonrpc
 
 
+class _ResumeRequest:
+    def __init__(
+        self,
+        *,
+        request_id: Any = None,
+        approved: bool = False,
+        reason: str | None = None,
+        error: Exception | None = None,
+        jsonrpc: bool = False,
+    ) -> None:
+        self.request_id = request_id
+        self.approved = approved
+        self.reason = reason
+        self.error = error
+        self.jsonrpc = jsonrpc
+
+
 class _RpcRequest:
     def __init__(self, *, payload: dict[str, Any] | None = None, error: JSONResponse | None = None) -> None:
         self.payload = payload
@@ -421,6 +481,74 @@ async def _parse_cancel_request(
             error=ValueError("JSON-RPC params.reason must be a string."),
         )
     return _CancelRequest(jsonrpc=True, request_id=request_id, reason=reason)
+
+
+async def _parse_resume_request(
+    request: Request,
+    *,
+    route_task_id: str,
+) -> _ResumeRequest:
+    body = await request.body()
+    if not body.strip():
+        return _ResumeRequest(error=ValueError("resume approved flag is required."))
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        return _ResumeRequest(jsonrpc=True, error=exc)
+    if not isinstance(payload, dict):
+        return _ResumeRequest(jsonrpc=True, error=ValueError("JSON-RPC request must be an object."))
+
+    if not _is_jsonrpc_request(payload) and "params" not in payload:
+        approved = payload.get("approved")
+        if not isinstance(approved, bool):
+            return _ResumeRequest(error=ValueError("resume approved flag must be a boolean."))
+        reason = payload.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            return _ResumeRequest(error=ValueError("resume reason must be a string."))
+        return _ResumeRequest(approved=approved, reason=reason)
+
+    request_id = payload.get("id")
+    if payload.get("jsonrpc") != "2.0":
+        return _ResumeRequest(
+            jsonrpc=True,
+            request_id=request_id,
+            error=ValueError("JSON-RPC request jsonrpc must be '2.0'."),
+        )
+    if payload.get("method") not in {None, "tasks/resume"}:
+        return _ResumeRequest(
+            jsonrpc=True,
+            request_id=request_id,
+            error=ValueError("JSON-RPC method must be 'tasks/resume'."),
+        )
+    params = payload.get("params") or {}
+    if not isinstance(params, dict):
+        return _ResumeRequest(
+            jsonrpc=True,
+            request_id=request_id,
+            error=ValueError("JSON-RPC params must be an object."),
+        )
+    param_task_id = params.get("id")
+    if param_task_id is not None and param_task_id != route_task_id:
+        return _ResumeRequest(
+            jsonrpc=True,
+            request_id=request_id,
+            error=ValueError("JSON-RPC params.id must match the route task id."),
+        )
+    approved = params.get("approved")
+    if not isinstance(approved, bool):
+        return _ResumeRequest(
+            jsonrpc=True,
+            request_id=request_id,
+            error=ValueError("JSON-RPC params.approved must be a boolean."),
+        )
+    reason = params.get("reason")
+    if reason is not None and not isinstance(reason, str):
+        return _ResumeRequest(
+            jsonrpc=True,
+            request_id=request_id,
+            error=ValueError("JSON-RPC params.reason must be a string."),
+        )
+    return _ResumeRequest(jsonrpc=True, request_id=request_id, approved=approved, reason=reason)
 
 
 async def _parse_subscribe_request(
