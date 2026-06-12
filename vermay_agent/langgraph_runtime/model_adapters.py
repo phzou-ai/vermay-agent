@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterator
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, BaseMessage
@@ -44,6 +45,12 @@ class OllamaModelAdapter:
                     }
                 ],
             )
+        )
+
+    def stream_text(self, messages: list[BaseMessage], tools: list[BaseTool]) -> Iterator[str]:
+        yield from self.client.stream_text(
+            messages=[_to_project_message(message) for message in messages],
+            tools=tool_schemas_from_tools(tools),
         )
 
 

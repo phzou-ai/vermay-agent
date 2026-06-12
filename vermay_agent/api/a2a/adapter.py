@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from vermay_agent.api.task_contract import ARTIFACT_TASK_EVENT_TYPES
 from vermay_agent.errors import InvalidRequestError, InvalidSessionStateError, TaskNotFoundError
 from vermay_agent.main_agent import (
+    LocalMessageDelta,
     LocalMessageResult,
     LocalTaskResult,
     MainAgentCore,
@@ -83,6 +84,36 @@ class A2AAdapter:
         if _is_jsonrpc_message_send(payload):
             return self._send_jsonrpc_message(payload)
         return self.send_message(A2ASendMessageRequest.model_validate(payload), wait=wait)
+
+    def stream_message_payload(self, payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
+        if not _is_jsonrpc_message_send(payload):
+            yield self.send_message_payload(payload)
+            return
+        if self.main_agent_core is None:
+            raise InvalidRequestError("A2A JSON-RPC message/stream requires main agent core.")
+
+        request_id = payload.get("id")
+        params = _jsonrpc_params(payload)
+        message = _jsonrpc_message(params)
+        _validate_jsonrpc_user_message(message)
+        metadata = _merged_metadata(params)
+        for result in self.main_agent_core.stream_message(
+            MainAgentRequest(
+                context_id=message.context_id,
+                message_id=message.message_id,
+                role=MessageRole(str(message.role or "user")),
+                parts=message.parts,
+                metadata=metadata,
+            )
+        ):
+            if isinstance(result, LocalMessageDelta):
+                yield _jsonrpc_success(request_id, _local_message_delta_payload(result))
+            else:
+                yield {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": _main_agent_result_payload(result, store=self.main_agent_core.store),
+                }
 
     def _send_jsonrpc_message(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.main_agent_core is None:
@@ -377,6 +408,8 @@ def _main_agent_result_payload(result: LocalMessageResult | LocalTaskResult | Re
                 "inputMessageId": result.input_message_id,
                 "routeDecisionId": result.route_decision_id,
                 "routeKind": RouteDecisionKind.LOCAL_MESSAGE.value,
+                "partial": False,
+                "final": True,
             },
         }
     if isinstance(result, LocalTaskResult):
@@ -428,6 +461,26 @@ def _main_agent_result_payload(result: LocalMessageResult | LocalTaskResult | Re
             return payload
         raise InvalidRequestError("remote_agent result did not include a message or task.")
     raise InvalidRequestError("unsupported main agent result.")
+
+
+def _local_message_delta_payload(delta: LocalMessageDelta) -> dict[str, Any]:
+    return {
+        "kind": "message",
+        "role": "agent",
+        "messageId": delta.message_id,
+        "contextId": delta.context_id,
+        "parts": [{"kind": "text", "text": delta.text}],
+        "metadata": {
+            "localContextId": delta.context_id,
+            "localMessageId": delta.message_id,
+            "inputMessageId": delta.input_message_id,
+            "routeDecisionId": delta.route_decision_id,
+            "routeKind": RouteDecisionKind.LOCAL_MESSAGE.value,
+            "partial": True,
+            "append": True,
+            "sequence": delta.sequence,
+        },
+    }
 
 
 def _jsonrpc_success(request_id: Any, result: dict[str, Any]) -> dict[str, Any]:

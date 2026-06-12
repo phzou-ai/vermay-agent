@@ -49,6 +49,17 @@ class LocalMessageResult:
 
 
 @dataclass(frozen=True)
+class LocalMessageDelta:
+    kind: RouteDecisionKind
+    context_id: str
+    message_id: str
+    input_message_id: str
+    route_decision_id: str
+    text: str
+    sequence: int
+
+
+@dataclass(frozen=True)
 class LocalTaskResult:
     kind: RouteDecisionKind
     context_id: str
@@ -71,6 +82,7 @@ class RemoteAgentResult:
 
 
 MainAgentResult = LocalMessageResult | LocalTaskResult | RemoteAgentResult
+MainAgentStreamResult = LocalMessageDelta | MainAgentResult
 
 
 TERMINAL_TASK_STATUSES = frozenset(

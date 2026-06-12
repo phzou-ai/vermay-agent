@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Iterator, Protocol
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
@@ -21,6 +21,13 @@ class DirectModelLocalMessageResponder:
         invocation = self.model.invoke(messages=[_to_langchain_message(message) for message in messages], tools=[])
         content = _string_content(invocation.message)
         return [{"kind": "text", "text": content}]
+
+    def stream(self, messages: list[MessageRecord]) -> Iterator[str]:
+        stream_text = getattr(self.model, "stream_text", None)
+        if not callable(stream_text):
+            yield _text_from_parts(self.respond(messages))
+            return
+        yield from stream_text([_to_langchain_message(message) for message in messages], [])
 
 
 def _to_langchain_message(message: MessageRecord) -> BaseMessage:

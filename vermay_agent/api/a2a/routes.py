@@ -54,18 +54,19 @@ def create_a2a_router(adapter: A2AAdapter) -> APIRouter:
     async def stream_message(request: dict[str, Any]) -> StreamingResponse:
         async def event_stream():
             try:
-                result = await asyncio.to_thread(adapter.send_message_payload, request)
-                yield _format_a2a_sse_event(result)
-                task_id = _task_id_from_message_result(result)
-                if task_id:
-                    batch = await asyncio.to_thread(
-                        adapter.wait_for_task_events,
-                        task_id,
-                        after_event_id=0,
-                        timeout_seconds=0.0,
-                    )
-                    for event in batch.events:
-                        yield _format_a2a_sse_event(event)
+                stream_request = {**request, "method": "message/send"} if _is_jsonrpc_request(request) else request
+                async for event in _iterate_blocking(adapter.stream_message_payload(stream_request)):
+                    yield _format_a2a_sse_event(event)
+                    task_id = _task_id_from_message_result(event)
+                    if task_id:
+                        batch = await asyncio.to_thread(
+                            adapter.wait_for_task_events,
+                            task_id,
+                            after_event_id=0,
+                            timeout_seconds=0.0,
+                        )
+                        for task_event in batch.events:
+                            yield _format_a2a_sse_event(task_event)
             except Exception as exc:
                 if _is_jsonrpc_request(request):
                     yield _format_a2a_sse_event(_jsonrpc_error_payload(request.get("id"), exc))
@@ -277,20 +278,30 @@ def _a2a_sse_response(event_stream: Any) -> StreamingResponse:
 async def _rpc_stream_message_events(adapter: A2AAdapter, payload: dict[str, Any]):
     request_id = payload.get("id")
     try:
-        result = await asyncio.to_thread(adapter.send_message_payload, {**payload, "method": "message/send"})
-        yield _format_a2a_sse_event(result)
-        task_id = _task_id_from_message_result(result)
-        if task_id:
-            batch = await asyncio.to_thread(
-                adapter.wait_for_task_events,
-                task_id,
-                after_event_id=0,
-                timeout_seconds=0.0,
-            )
-            for event in batch.events:
-                yield _format_a2a_sse_event(_jsonrpc_success_payload(request_id, event))
+        async for event in _iterate_blocking(adapter.stream_message_payload({**payload, "method": "message/send"})):
+            yield _format_a2a_sse_event(event)
+            task_id = _task_id_from_message_result(event)
+            if task_id:
+                batch = await asyncio.to_thread(
+                    adapter.wait_for_task_events,
+                    task_id,
+                    after_event_id=0,
+                    timeout_seconds=0.0,
+                )
+                for task_event in batch.events:
+                    yield _format_a2a_sse_event(_jsonrpc_success_payload(request_id, task_event))
     except Exception as exc:
         yield _format_a2a_sse_event(_jsonrpc_error_payload(request_id, exc))
+
+
+async def _iterate_blocking(iterator):
+    sentinel = object()
+    iterable = iter(iterator)
+    while True:
+        item = await asyncio.to_thread(next, iterable, sentinel)
+        if item is sentinel:
+            break
+        yield item
 
 
 async def _rpc_subscribe_task_events(adapter: A2AAdapter, payload: dict[str, Any], request: Request):

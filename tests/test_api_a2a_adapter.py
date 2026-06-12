@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -48,6 +50,13 @@ class FakeLocalMessageResponder:
     def respond(self, messages: list[MessageRecord]) -> list[dict]:
         self.calls.append(messages)
         return [{"kind": "text", "text": "direct answer"}]
+
+
+class FakeStreamingLocalMessageResponder(FakeLocalMessageResponder):
+    def stream(self, messages: list[MessageRecord]):
+        self.calls.append(messages)
+        yield "streamed "
+        yield "answer"
 
 
 class FakeLocalTaskRunner:
@@ -1432,6 +1441,62 @@ def test_a2a_rpc_send_streaming_message_emits_local_message_result(tmp_path):
     assert '"id": "rpc-stream-message"' in response.text
     assert '"kind": "message"' in response.text
     assert "direct answer" in response.text
+    assert len(responder.calls) == 1
+    service.close()
+    agent_store.close()
+
+
+def test_a2a_rpc_send_streaming_message_emits_partial_local_message_events(tmp_path):
+    agent_store = AgentStore(tmp_path / "agent.sqlite")
+    main_store = MainAgentStore(agent_store)
+    responder = FakeStreamingLocalMessageResponder()
+    core = MainAgentCore(store=main_store, local_message_responder=responder)
+    service = AgentService(
+        session_store=SessionStore(agent_store),
+        runtime_builder=lambda config: FakeRuntime([completed("unused")]),
+    )
+    client = TestClient(create_app(service=service, enable_a2a=True, main_agent_core=core))
+
+    response = client.post(
+        "/rpc",
+        json={
+            "jsonrpc": "2.0",
+            "id": "rpc-stream-message",
+            "method": "SendStreamingMessage",
+            "params": {
+                "message": {
+                    "kind": "message",
+                    "role": "user",
+                    "messageId": "msg-user-1",
+                    "parts": [{"kind": "text", "text": "hello"}],
+                },
+                "metadata": {"executionMode": "message"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    events = [
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    message_events = [event["result"] for event in events if event.get("result", {}).get("kind") == "message"]
+    assert [event["parts"][0]["text"] for event in message_events] == [
+        "streamed ",
+        "answer",
+        "streamed answer",
+    ]
+    assert message_events[0]["metadata"]["partial"] is True
+    assert message_events[0]["metadata"]["append"] is True
+    assert message_events[0]["metadata"]["sequence"] == 1
+    assert message_events[-1]["metadata"]["partial"] is False
+    assert message_events[-1]["metadata"]["final"] is True
+
+    context = main_store.list_contexts()[0]
+    stored_messages = main_store.list_context_messages(context.context_id)
+    assert [message.role.value for message in stored_messages] == ["user", "agent"]
+    assert stored_messages[-1].parts == [{"kind": "text", "text": "streamed answer"}]
     assert len(responder.calls) == 1
     service.close()
     agent_store.close()

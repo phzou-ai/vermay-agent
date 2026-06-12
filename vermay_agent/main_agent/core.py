@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from typing import Iterator
 from uuid import uuid4
 
 from .context import recent_messages
 from .models import (
+    LocalMessageDelta,
     LocalMessageResult,
     LocalTaskResult,
     MainAgentRequest,
     MainAgentResult,
+    MainAgentStreamResult,
     MessageRole,
     RemoteAgentResult,
     RouteDecisionKind,
@@ -76,6 +79,49 @@ class MainAgentCore:
             )
         raise ValueError(f"unsupported route decision: {route_decision.kind.value}")
 
+    def stream_message(self, request: MainAgentRequest) -> Iterator[MainAgentStreamResult]:
+        if request.role != MessageRole.USER:
+            raise ValueError("main agent request role must be user")
+        context_id = self._resolve_context_id(request.context_id, title=_title_from_parts(request.parts))
+        message_id = request.message_id or _new_id("msg")
+        user_message = self.store.append_message(
+            message_id=message_id,
+            context_id=context_id,
+            role=request.role,
+            parts=request.parts,
+            metadata=request.metadata,
+        )
+        route_decision = self.router.decide(
+            request=request,
+            context_id=context_id,
+            input_message_id=user_message.message_id,
+            messages=recent_messages(self.store, context_id, limit=10),
+            store=self.store,
+        )
+        if route_decision.kind == RouteDecisionKind.LOCAL_MESSAGE:
+            yield from self._stream_local_message(
+                context_id=context_id,
+                input_message_id=user_message.message_id,
+                route_decision=route_decision,
+            )
+            return
+        if route_decision.kind == RouteDecisionKind.LOCAL_TASK:
+            yield self._handle_local_task(
+                context_id=context_id,
+                input_message_id=user_message.message_id,
+                route_decision=route_decision,
+            )
+            return
+        if route_decision.kind == RouteDecisionKind.REMOTE_AGENT:
+            yield self._handle_remote_agent(
+                context_id=context_id,
+                input_message_id=user_message.message_id,
+                request=request,
+                route_decision=route_decision,
+            )
+            return
+        raise ValueError(f"unsupported route decision: {route_decision.kind.value}")
+
     def _resolve_context_id(self, context_id: str | None, *, title: str | None = None) -> str:
         if context_id is None:
             context = self.store.create_context(context_id=_new_id("ctx"), title=title)
@@ -141,6 +187,70 @@ class MainAgentCore:
             },
         )
         return LocalMessageResult(
+            kind=RouteDecisionKind.LOCAL_MESSAGE,
+            context_id=context_id,
+            message_id=assistant_message.message_id,
+            input_message_id=input_message_id,
+            route_decision_id=decision.decision_id,
+            parts=assistant_message.parts,
+        )
+
+    def _stream_local_message(
+        self,
+        *,
+        context_id: str,
+        input_message_id: str,
+        route_decision: MainAgentRouteDecision,
+    ) -> Iterator[LocalMessageDelta | LocalMessageResult]:
+        stream_method = getattr(self.local_message_responder, "stream", None)
+        if not callable(stream_method):
+            yield self._handle_local_message(
+                context_id=context_id,
+                input_message_id=input_message_id,
+                route_decision=route_decision,
+            )
+            return
+
+        decision = self.store.record_route_decision(
+            decision_id=_new_id("route"),
+            context_id=context_id,
+            message_id=input_message_id,
+            kind=RouteDecisionKind.LOCAL_MESSAGE,
+            reason=route_decision.reason,
+            confidence=route_decision.confidence,
+            metadata=route_decision.metadata,
+        )
+        assistant_message_id = _new_id("msg")
+        full_text = ""
+        sequence = 0
+        for delta in stream_method(recent_messages(self.store, context_id, limit=10)):
+            if not isinstance(delta, str) or not delta:
+                continue
+            full_text += delta
+            sequence += 1
+            yield LocalMessageDelta(
+                kind=RouteDecisionKind.LOCAL_MESSAGE,
+                context_id=context_id,
+                message_id=assistant_message_id,
+                input_message_id=input_message_id,
+                route_decision_id=decision.decision_id,
+                text=delta,
+                sequence=sequence,
+            )
+
+        parts = [{"kind": "text", "text": full_text}]
+        assistant_message = self.store.append_message(
+            message_id=assistant_message_id,
+            context_id=context_id,
+            role=MessageRole.AGENT,
+            parts=parts,
+            metadata={
+                "inputMessageId": input_message_id,
+                "routeDecisionId": decision.decision_id,
+                "routeKind": RouteDecisionKind.LOCAL_MESSAGE.value,
+            },
+        )
+        yield LocalMessageResult(
             kind=RouteDecisionKind.LOCAL_MESSAGE,
             context_id=context_id,
             message_id=assistant_message.message_id,

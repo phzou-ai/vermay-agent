@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from typing import Iterator
 
 from .json_decision import parse_json_decision
 from vermay_agent.types import Message, ModelResponse, ToolCall
@@ -53,6 +54,44 @@ class OllamaModelClient:
             return ModelResponse(content=f"Invalid Ollama response: {exc}; raw={raw[:1000]}")
 
         return self._parse_content(content)
+
+    def stream_text(self, messages: list[Message], tools: list[dict]) -> Iterator[str]:
+        if tools:
+            yield self.invoke(messages, tools).content
+            return
+
+        payload = {
+            "model": self.model,
+            "messages": self._to_plain_ollama_messages(messages),
+            "stream": True,
+            "options": {"temperature": 0},
+        }
+        request = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8").strip()
+                    if not line:
+                        continue
+                    try:
+                        body = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    content = body.get("message", {}).get("content", "")
+                    if isinstance(content, str) and content:
+                        yield content
+                    if body.get("done") is True:
+                        break
+        except urllib.error.HTTPError as exc:
+            yield self._format_http_error(exc)
+        except urllib.error.URLError as exc:
+            yield f"Ollama request failed: {exc}"
 
     def _format_http_error(self, exc: urllib.error.HTTPError) -> str:
         detail = ""
@@ -110,6 +149,19 @@ class OllamaModelClient:
                 )
                 continue
 
+            converted.append({"role": message.role, "content": message.content})
+        return converted
+
+    def _to_plain_ollama_messages(self, messages: list[Message]) -> list[dict[str, str]]:
+        converted = [
+            {
+                "role": "system",
+                "content": "Answer the user directly in plain text. Do not wrap the answer in JSON.",
+            }
+        ]
+        for message in messages:
+            if message.role == "tool":
+                continue
             converted.append({"role": message.role, "content": message.content})
         return converted
 
