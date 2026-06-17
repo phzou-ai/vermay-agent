@@ -4,6 +4,10 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+
+# OS artifacts
+.DS_Store
+
 .env.local
 .env.*.local
 
