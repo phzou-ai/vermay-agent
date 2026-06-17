@@ -1491,6 +1491,7 @@ def test_a2a_rpc_send_streaming_message_emits_partial_local_message_events(tmp_p
     assert message_events[0]["metadata"]["append"] is True
     assert message_events[0]["metadata"]["sequence"] == 1
     assert message_events[-1]["metadata"]["partial"] is False
+    assert message_events[-1]["metadata"]["append"] is False
     assert message_events[-1]["metadata"]["final"] is True
 
     context = main_store.list_contexts()[0]

@@ -409,6 +409,7 @@ def _main_agent_result_payload(result: LocalMessageResult | LocalTaskResult | Re
                 "routeDecisionId": result.route_decision_id,
                 "routeKind": RouteDecisionKind.LOCAL_MESSAGE.value,
                 "partial": False,
+                "append": False,
                 "final": True,
             },
         }

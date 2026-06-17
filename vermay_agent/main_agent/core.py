@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Iterator
 from uuid import uuid4
 
@@ -23,6 +24,13 @@ from .store import MainAgentStore
 from .task_runner import LocalTaskRunner
 
 
+@dataclass(frozen=True)
+class _PreparedMessageRoute:
+    context_id: str
+    input_message_id: str
+    route_decision: MainAgentRouteDecision
+
+
 class MainAgentCore:
     def __init__(
         self,
@@ -40,46 +48,61 @@ class MainAgentCore:
         self.router = router or DefaultMainAgentRouter()
 
     def handle_message(self, request: MainAgentRequest) -> MainAgentResult:
-        if request.role != MessageRole.USER:
-            raise ValueError("main agent request role must be user")
-        context_id = self._resolve_context_id(request.context_id, title=_title_from_parts(request.parts))
-        message_id = request.message_id or _new_id("msg")
-        user_message = self.store.append_message(
-            message_id=message_id,
-            context_id=context_id,
-            role=request.role,
-            parts=request.parts,
-            metadata=request.metadata,
-        )
-        route_decision = self.router.decide(
-            request=request,
-            context_id=context_id,
-            input_message_id=user_message.message_id,
-            messages=recent_messages(self.store, context_id, limit=10),
-            store=self.store,
-        )
+        prepared = self._prepare_message_route(request)
+        context_id = prepared.context_id
+        input_message_id = prepared.input_message_id
+        route_decision = prepared.route_decision
         if route_decision.kind == RouteDecisionKind.LOCAL_MESSAGE:
             return self._handle_local_message(
                 context_id=context_id,
-                input_message_id=user_message.message_id,
+                input_message_id=input_message_id,
                 route_decision=route_decision,
             )
         if route_decision.kind == RouteDecisionKind.LOCAL_TASK:
             return self._handle_local_task(
                 context_id=context_id,
-                input_message_id=user_message.message_id,
+                input_message_id=input_message_id,
                 route_decision=route_decision,
             )
         if route_decision.kind == RouteDecisionKind.REMOTE_AGENT:
             return self._handle_remote_agent(
                 context_id=context_id,
-                input_message_id=user_message.message_id,
+                input_message_id=input_message_id,
                 request=request,
                 route_decision=route_decision,
             )
         raise ValueError(f"unsupported route decision: {route_decision.kind.value}")
 
     def stream_message(self, request: MainAgentRequest) -> Iterator[MainAgentStreamResult]:
+        prepared = self._prepare_message_route(request)
+        context_id = prepared.context_id
+        input_message_id = prepared.input_message_id
+        route_decision = prepared.route_decision
+        if route_decision.kind == RouteDecisionKind.LOCAL_MESSAGE:
+            yield from self._stream_local_message(
+                context_id=context_id,
+                input_message_id=input_message_id,
+                route_decision=route_decision,
+            )
+            return
+        if route_decision.kind == RouteDecisionKind.LOCAL_TASK:
+            yield self._handle_local_task(
+                context_id=context_id,
+                input_message_id=input_message_id,
+                route_decision=route_decision,
+            )
+            return
+        if route_decision.kind == RouteDecisionKind.REMOTE_AGENT:
+            yield self._handle_remote_agent(
+                context_id=context_id,
+                input_message_id=input_message_id,
+                request=request,
+                route_decision=route_decision,
+            )
+            return
+        raise ValueError(f"unsupported route decision: {route_decision.kind.value}")
+
+    def _prepare_message_route(self, request: MainAgentRequest) -> _PreparedMessageRoute:
         if request.role != MessageRole.USER:
             raise ValueError("main agent request role must be user")
         context_id = self._resolve_context_id(request.context_id, title=_title_from_parts(request.parts))
@@ -98,29 +121,11 @@ class MainAgentCore:
             messages=recent_messages(self.store, context_id, limit=10),
             store=self.store,
         )
-        if route_decision.kind == RouteDecisionKind.LOCAL_MESSAGE:
-            yield from self._stream_local_message(
-                context_id=context_id,
-                input_message_id=user_message.message_id,
-                route_decision=route_decision,
-            )
-            return
-        if route_decision.kind == RouteDecisionKind.LOCAL_TASK:
-            yield self._handle_local_task(
-                context_id=context_id,
-                input_message_id=user_message.message_id,
-                route_decision=route_decision,
-            )
-            return
-        if route_decision.kind == RouteDecisionKind.REMOTE_AGENT:
-            yield self._handle_remote_agent(
-                context_id=context_id,
-                input_message_id=user_message.message_id,
-                request=request,
-                route_decision=route_decision,
-            )
-            return
-        raise ValueError(f"unsupported route decision: {route_decision.kind.value}")
+        return _PreparedMessageRoute(
+            context_id=context_id,
+            input_message_id=user_message.message_id,
+            route_decision=route_decision,
+        )
 
     def _resolve_context_id(self, context_id: str | None, *, title: str | None = None) -> str:
         if context_id is None:
