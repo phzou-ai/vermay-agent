@@ -1,1 +1,1 @@
-"""Command-line entry points for Vermay Agent Workbench."""
+"""Command-line entry points for Vermay Agent."""

@@ -94,7 +94,7 @@ def create_app(
             if owned_store is not None:
                 owned_store.close()
 
-    app = FastAPI(title="Vermay Agent Workbench API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Vermay Agent API", version="0.1.0", lifespan=lifespan)
     app.state.agent_service = owned_service
     app.state.main_agent_core = main_agent_core
 

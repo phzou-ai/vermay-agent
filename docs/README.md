@@ -1,8 +1,8 @@
-# Vermay Agent Workbench Documentation
+# Vermay Agent Documentation
 
 ## Scope
 
-This directory contains stable project-facing documentation for Vermay Agent Workbench.
+This directory contains stable project-facing documentation for Vermay Agent.
 
 The project is positioned as an agent validation and practice workbench. It provides a concrete runtime for testing agent orchestration, tool execution, approval control, memory, skills, evaluation replay, model adapters, MCP client integration, local API integration, and real-world tool patterns.
 
@@ -25,6 +25,6 @@ Archived implementation material retained in this repository is kept under `arch
 
 ## Naming Boundary
 
-The current project name is Vermay Agent Workbench. The active Python package is `vermay_agent`, and the preferred CLI command is `vermay-agent`.
+The current project name is Vermay Agent. The active Python package is `vermay_agent`, and the preferred CLI command is `vermay-agent`.
 
 The legacy `mini-agent` command, `mini_agent` import namespace, and `MINI_AGENT_*` environment variable prefix remain compatibility aliases during the migration. New code and docs should prefer `vermay-agent`, `vermay_agent`, and `VERMAY_AGENT_*` configuration names. The external planning workspace is still named `mini-agent-docs` for now, so path references to that directory are intentional.

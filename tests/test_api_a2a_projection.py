@@ -35,6 +35,7 @@ def test_a2a_status_mapping_reserves_future_protocol_states():
     assert map_task_status("cancelled") == A2ATaskState.CANCELED
     assert map_task_status("rejected") == A2ATaskState.REJECTED
     assert map_task_status("auth-required") == A2ATaskState.AUTH_REQUIRED
+    assert map_task_status("TASK_STATE_INPUT_REQUIRED") == A2ATaskState.INPUT_REQUIRED
 
 
 def test_a2a_terminal_state_helper():
@@ -55,7 +56,7 @@ def test_project_task_uses_context_id_and_keeps_thread_id_in_metadata_only():
         "id": "task-1",
         "contextId": "ctx-1",
         "status": {
-            "state": "TASK_STATE_WORKING",
+            "state": "working",
             "timestamp": "2026-06-03T00:00:01+00:00",
         },
         "metadata": {
@@ -78,7 +79,7 @@ def test_project_task_falls_back_to_session_id_as_context_id():
     assert projection.payload is not None
     assert projection.payload["kind"] == "task"
     assert projection.payload["contextId"] == "session-1"
-    assert projection.payload["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert projection.payload["status"]["state"] == "completed"
 
 
 def test_project_retry_task_includes_local_lineage_metadata():
@@ -150,7 +151,7 @@ def test_project_task_event_maps_status_update():
         "taskId": "task-1",
         "contextId": "ctx-1",
         "status": {
-            "state": "TASK_STATE_SUBMITTED",
+            "state": "submitted",
             "timestamp": "2026-06-03T00:00:02+00:00",
         },
         "metadata": {
@@ -185,7 +186,7 @@ def test_project_task_event_maps_cancelled_status_update():
     assert projection.kind == A2AProjectionKind.STATUS_UPDATE
     assert projection.payload is not None
     assert projection.payload["kind"] == "status-update"
-    assert projection.payload["status"]["state"] == "TASK_STATE_CANCELED"
+    assert projection.payload["status"]["state"] == "canceled"
 
 
 def test_project_task_artifact_projects_a2a_artifact_payload():

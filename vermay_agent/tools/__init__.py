@@ -1,1 +1,1 @@
-"""Tool implementations for Vermay Agent Workbench."""
+"""Tool implementations for Vermay Agent."""

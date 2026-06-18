@@ -13,7 +13,7 @@ from ..app_factory import DEFAULT_MODEL_CONFIG_PATH, ROOT, RuntimeFactoryConfig,
 
 
 def run_prompt(argv: list[str]) -> None:
-    parser = argparse.ArgumentParser(description="Vermay Agent Workbench")
+    parser = argparse.ArgumentParser(description="Vermay Agent")
     parser.add_argument("prompt", nargs="*", help="User input")
     parser.add_argument(
         "--trace",

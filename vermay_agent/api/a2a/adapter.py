@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Iterable
+from uuid import uuid4
 
 from pydantic import ValidationError
 
@@ -274,6 +275,8 @@ class A2AAdapter:
             status=snapshot.status or next_status.value,
             metadata=metadata,
         )
+        if next_status == MainAgentTaskStatus.COMPLETED:
+            task = self._sync_remote_proxy_final_answer(task, delegation=delegation, snapshot=snapshot)
         if next_status == task.status:
             return task
         updated = self.main_agent_core.store.update_task_status(task.task_id, next_status)
@@ -289,6 +292,61 @@ class A2AAdapter:
             },
         )
         return updated
+
+    def _sync_remote_proxy_final_answer(self, task, *, delegation, snapshot):
+        parts, remote_artifact_id = _remote_final_artifact(snapshot.artifacts)
+        if not parts:
+            return task
+
+        store = self.main_agent_core.store
+        artifact_id = f"{task.task_id}:remote_final_answer"
+        if store.get_artifact(artifact_id) is not None:
+            return store.get_task(task.task_id) or task
+
+        with store.transaction():
+            assistant_message = store.append_message(
+                message_id=f"msg-{uuid4().hex}",
+                context_id=task.context_id,
+                role=MessageRole.AGENT,
+                parts=parts,
+                task_id=task.task_id,
+                metadata={
+                    "routeKind": RouteDecisionKind.REMOTE_AGENT.value,
+                    "remoteAgentId": delegation.remote_agent_id,
+                    "remoteTaskId": snapshot.task_id,
+                    "remoteContextId": snapshot.context_id,
+                    "remoteArtifactId": remote_artifact_id,
+                    "delegationId": delegation.delegation_id,
+                },
+            )
+            artifact = store.upsert_artifact(
+                artifact_id=artifact_id,
+                task_id=task.task_id,
+                context_id=task.context_id,
+                parts=parts,
+                metadata={
+                    "kind": "final_answer",
+                    "source": "remote_agent",
+                    "outputMessageId": assistant_message.message_id,
+                    "remoteAgentId": delegation.remote_agent_id,
+                    "remoteTaskId": snapshot.task_id,
+                    "remoteArtifactId": remote_artifact_id,
+                },
+            )
+            store.append_task_event(
+                task_id=task.task_id,
+                type="task_artifact_created",
+                status=MainAgentTaskStatus.COMPLETED,
+                payload={
+                    "artifact_id": artifact.artifact_id,
+                    "kind": "final_answer",
+                    "source": "remote_agent",
+                    "remote_agent_id": delegation.remote_agent_id,
+                    "remote_task_id": snapshot.task_id,
+                    "remote_artifact_id": remote_artifact_id,
+                },
+            )
+            return store.set_task_output_message(task.task_id, assistant_message.message_id)
 
     def _project_main_agent_task_event(self, event, *, task):
         artifact_id = event.payload.get("artifact_id")
@@ -596,3 +654,33 @@ def _remote_status_to_main_status(status: str | None, *, fallback: MainAgentTask
     if status in {"auth-required", "TASK_STATE_AUTH_REQUIRED"}:
         return MainAgentTaskStatus.AUTH_REQUIRED
     return fallback
+
+
+def _remote_final_artifact(artifacts: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str | None]:
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        raw_parts = artifact.get("parts")
+        if not isinstance(raw_parts, list):
+            continue
+        parts = [_normalize_remote_part(part) for part in raw_parts]
+        parts = [part for part in parts if part is not None]
+        if parts:
+            return parts, _optional_str(artifact.get("artifactId") or artifact.get("id"))
+    return [], None
+
+
+def _normalize_remote_part(part: object) -> dict[str, Any] | None:
+    if not isinstance(part, dict):
+        return None
+    if isinstance(part.get("text"), str):
+        return {"kind": "text", "text": part["text"]}
+    if isinstance(part.get("kind"), str):
+        return dict(part)
+    return None
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)

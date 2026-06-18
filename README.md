@@ -1,6 +1,6 @@
-# Vermay Agent Workbench
+# Vermay Agent
 
-Vermay Agent Workbench is an A2A-first local main-agent workbench. It exposes a main agent that can:
+Vermay Agent is an A2A-first local main-agent runtime. It exposes a main agent that can:
 
 - answer lightweight requests directly as messages;
 - run local LangGraph-backed tasks with events, artifacts, approval interrupts, cancellation, and resume;

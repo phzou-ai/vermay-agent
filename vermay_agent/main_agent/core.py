@@ -16,6 +16,7 @@ from .models import (
     RemoteAgentResult,
     RouteDecisionKind,
     TaskStatus,
+    is_terminal_task_status,
 )
 from .remote_agent import RemoteAgentClient
 from .responder import LocalMessageResponder
@@ -105,6 +106,7 @@ class MainAgentCore:
     def _prepare_message_route(self, request: MainAgentRequest) -> _PreparedMessageRoute:
         if request.role != MessageRole.USER:
             raise ValueError("main agent request role must be user")
+        self._validate_explicit_route_metadata(request.metadata)
         context_id = self._resolve_context_id(request.context_id, title=_title_from_parts(request.parts))
         message_id = request.message_id or _new_id("msg")
         user_message = self.store.append_message(
@@ -126,6 +128,25 @@ class MainAgentCore:
             input_message_id=user_message.message_id,
             route_decision=route_decision,
         )
+
+    def _validate_explicit_route_metadata(self, metadata: dict) -> None:
+        execution_mode = str(metadata.get("executionMode") or "auto")
+        if execution_mode not in {"auto", "message", "task"}:
+            raise ValueError(f"unsupported executionMode: {execution_mode}")
+
+        if metadata.get("route") != RouteDecisionKind.REMOTE_AGENT.value:
+            return
+
+        target_agent_id = _target_agent_id_from_metadata(metadata)
+        if target_agent_id is None:
+            raise ValueError("remote_agent route requires metadata.targetAgentId")
+        agent = self.store.get_registered_agent(target_agent_id)
+        if agent is None:
+            raise ValueError(f"unknown registered agent: {target_agent_id}")
+        if not agent.enabled:
+            raise ValueError(f"registered agent is disabled: {target_agent_id}")
+        if self.remote_agent_client is None:
+            raise ValueError("remote_agent client is not configured")
 
     def _resolve_context_id(self, context_id: str | None, *, title: str | None = None) -> str:
         if context_id is None:
@@ -321,6 +342,8 @@ class MainAgentCore:
         task = self.store.get_task(task_id)
         if task is None:
             raise ValueError(f"unknown task: {task_id}")
+        if is_terminal_task_status(task.status):
+            return task
         if result.status == TaskStatus.COMPLETED:
             with self.store.transaction():
                 assistant_message = self.store.append_message(
@@ -389,6 +412,9 @@ class MainAgentCore:
         return failed
 
     def _mark_local_task_failed(self, task_id: str, exc: Exception):
+        task = self.store.get_task(task_id)
+        if task is not None and is_terminal_task_status(task.status):
+            return task
         with self.store.transaction():
             failed = self.store.update_task_status(
                 task_id,
@@ -569,3 +595,11 @@ def _title_from_parts(parts: list[dict]) -> str | None:
     text = " ".join(str(part.get("text", "")).strip() for part in parts if isinstance(part.get("text"), str))
     normalized = " ".join(text.split())
     return normalized or None
+
+
+def _target_agent_id_from_metadata(metadata: dict) -> str | None:
+    for key in ("targetAgentId", "target_agent_id", "remoteAgentId", "remote_agent_id"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None

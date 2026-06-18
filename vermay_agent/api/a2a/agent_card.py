@@ -15,7 +15,7 @@ class A2AAgentSkillConfig:
 
 @dataclass(frozen=True)
 class A2AAgentCardConfig:
-    name: str = "Vermay Agent Workbench"
+    name: str = "Vermay Agent"
     description: str = "An A2A-first main agent for direct answers, local task execution, and child-agent delegation."
     url: str = "http://127.0.0.1:8000"
     version: str = "0.1.0"

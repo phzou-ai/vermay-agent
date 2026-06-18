@@ -357,6 +357,55 @@ def test_main_agent_core_local_task_runner_persists_output_message_artifact_and_
     assert runner.calls[0][1] == task.runtime_thread_id
 
 
+def test_main_agent_core_does_not_overwrite_terminal_task_status_after_runner_returns(tmp_path):
+    class CancelBeforeCompleteRunner:
+        def __init__(self, store: MainAgentStore) -> None:
+            self.store = store
+
+        def run(self, messages: list[MessageRecord], *, thread_id: str) -> LocalTaskRunResult:
+            task = next(
+                task
+                for task in self.store.list_context_tasks(messages[-1].context_id)
+                if task.runtime_thread_id == thread_id
+            )
+            self.store.update_task_status(task.task_id, TaskStatus.CANCELED)
+            self.store.append_task_event(task_id=task.task_id, type="task_cancelled", status=TaskStatus.CANCELED)
+            return LocalTaskRunResult(
+                status=TaskStatus.COMPLETED,
+                parts=[{"kind": "text", "text": "late completed answer"}],
+            )
+
+    store = MainAgentStore(AgentStore(tmp_path / "agent.sqlite"))
+    core = MainAgentCore(
+        store=store,
+        local_message_responder=FakeResponder(),
+        local_task_runner=CancelBeforeCompleteRunner(store),
+    )
+    context = store.create_context(context_id="ctx-1")
+
+    result = core.handle_message(
+        MainAgentRequest(
+            context_id=context.context_id,
+            message_id="msg-user-1",
+            role=MessageRole.USER,
+            parts=[{"kind": "text", "text": "run then cancel"}],
+            metadata={"executionMode": "task"},
+        )
+    )
+
+    task = store.get_task(result.task_id)
+    assert task is not None
+    assert task.status == TaskStatus.CANCELED
+    assert task.output_message_id is None
+    assert [message.role for message in store.list_context_messages("ctx-1")] == [MessageRole.USER]
+    assert store.list_task_artifacts(result.task_id) == []
+    assert [event.type for event in store.list_task_events(result.task_id)] == [
+        "task_created",
+        "task_started",
+        "task_cancelled",
+    ]
+
+
 def test_main_agent_core_rolls_back_partial_completed_task_result(tmp_path):
     class FailingArtifactStore(MainAgentStore):
         def upsert_artifact(self, **kwargs):
@@ -1205,6 +1254,7 @@ def test_main_agent_core_remote_route_requires_registered_enabled_agent_and_clie
         assert str(exc) == "remote_agent route requires metadata.targetAgentId"
     else:
         raise AssertionError("expected missing target to fail")
+    assert store.list_contexts() == []
 
     store.upsert_registered_agent(
         agent_id="agent-child-1",
@@ -1226,3 +1276,26 @@ def test_main_agent_core_remote_route_requires_registered_enabled_agent_and_clie
         assert str(exc) == "registered agent is disabled: agent-child-1"
     else:
         raise AssertionError("expected disabled agent to fail")
+    assert store.list_contexts() == []
+
+
+def test_main_agent_core_invalid_explicit_execution_mode_does_not_append_message(tmp_path):
+    store = MainAgentStore(AgentStore(tmp_path / "agent.sqlite"))
+    core = MainAgentCore(store=store, local_message_responder=FakeResponder())
+
+    try:
+        core.handle_message(
+            MainAgentRequest(
+                context_id=None,
+                message_id="msg-user-1",
+                role=MessageRole.USER,
+                parts=[{"kind": "text", "text": "hello"}],
+                metadata={"executionMode": "invalid"},
+            )
+        )
+    except ValueError as exc:
+        assert str(exc) == "unsupported executionMode: invalid"
+    else:
+        raise AssertionError("expected unsupported execution mode to fail")
+
+    assert store.list_contexts() == []

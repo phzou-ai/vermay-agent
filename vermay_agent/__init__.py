@@ -1,1 +1,1 @@
-"""Vermay Agent Workbench."""
+"""Vermay Agent."""

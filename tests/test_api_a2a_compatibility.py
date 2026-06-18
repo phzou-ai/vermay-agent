@@ -109,7 +109,7 @@ def test_a2a_cancel_route_maps_to_service_boundary(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["jsonrpc"] == "2.0"
-    assert response.json()["result"]["status"]["state"] == "TASK_STATE_CANCELED"
+    assert response.json()["result"]["status"]["state"] == "canceled"
     assert service.get_task("task-1").status == TaskStatus.CANCELED
     service.close()
     store.close()
@@ -134,7 +134,7 @@ def test_a2a_subscribe_route_streams_projected_status_and_artifact_events(tmp_pa
     body = response.text
     assert "event: status-update" in body
     assert "event: artifact-update" in body
-    assert "TASK_STATE_COMPLETED" in body
+    assert "completed" in body
     assert "final_answer" in body
     assert "thread_id" not in body.lower()
     assert "localThreadId" in body
@@ -160,7 +160,7 @@ def test_a2a_send_message_creates_context_session_task_and_projected_artifact(tm
     assert payload["kind"] == "task"
     assert payload["id"] == "task-1"
     assert payload["contextId"] == "ctx-1"
-    assert payload["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert payload["status"]["state"] == "completed"
     assert payload["artifacts"][0]["artifactId"] == "final_answer"
     assert payload["artifacts"][0]["parts"] == [{"text": "weather done", "mediaType": "text/plain"}]
     assert "thread_id" not in str(payload).lower()
@@ -221,9 +221,9 @@ def test_a2a_get_task_and_cancel_task_use_service_boundary(tmp_path):
     canceled = adapter.cancel_task("task-1", reason="operator requested")
 
     assert queued["kind"] == "task"
-    assert queued["status"]["state"] == "TASK_STATE_SUBMITTED"
+    assert queued["status"]["state"] == "submitted"
     assert canceled["kind"] == "task"
-    assert canceled["status"]["state"] == "TASK_STATE_CANCELED"
+    assert canceled["status"]["state"] == "canceled"
     assert service.get_task("task-1").status == TaskStatus.CANCELED
     with pytest.raises(TaskNotFoundError):
         adapter.get_task("missing-task")
@@ -246,7 +246,7 @@ def test_a2a_adapter_projects_status_and_artifact_events_without_internal_payloa
         "artifact-update",
         "status-update",
     ]
-    assert projections[-1]["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert projections[-1]["status"]["state"] == "completed"
     assert projections[2]["artifact"]["artifactId"] == "final_answer"
     assert "thread_id" not in str(projections).lower()
     assert projections[0]["metadata"]["localThreadId"] == "task:task-1:attempt:1"

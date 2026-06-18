@@ -1,4 +1,4 @@
-"""HTTP API for Vermay Agent Workbench."""
+"""HTTP API for Vermay Agent."""
 
 from .app import create_app
 

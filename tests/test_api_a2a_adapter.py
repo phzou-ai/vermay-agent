@@ -158,7 +158,7 @@ def test_a2a_agent_card_declares_local_skeleton_capabilities(tmp_path):
 
     card = adapter.get_agent_card()
 
-    assert card["name"] == "Vermay Agent Workbench"
+    assert card["name"] == "Vermay Agent"
     assert card["capabilities"] == {
         "streaming": False,
         "pushNotifications": False,
@@ -265,7 +265,7 @@ def test_a2a_routes_are_exposed_when_enabled(tmp_path):
     assert card.json()["metadata"]["routeKinds"] == ["local_message", "local_task", "remote_agent"]
     assert sent.status_code == 200
     assert sent.json()["kind"] == "task"
-    assert sent.json()["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert sent.json()["status"]["state"] == "completed"
     assert sent.json()["contextId"] == "ctx-1"
     assert sent.json()["artifacts"][0]["parts"] == [{"text": "weather done", "mediaType": "text/plain"}]
     assert "thread_id" not in str(sent.json()).lower()
@@ -647,6 +647,12 @@ def test_a2a_route_jsonrpc_remote_proxy_task_get_syncs_remote_status(tmp_path):
                 task_id="remote-task-1",
                 context_id="remote-ctx-1",
                 status="completed",
+                artifacts=[
+                    {
+                        "artifactId": "remote-final",
+                        "parts": [{"text": "remote task answer", "mediaType": "text/plain"}],
+                    }
+                ],
                 raw={"result": {"kind": "task", "id": "remote-task-1"}},
             )
         ],
@@ -681,18 +687,30 @@ def test_a2a_route_jsonrpc_remote_proxy_task_get_syncs_remote_status(tmp_path):
     task_id = sent.json()["result"]["id"]
 
     fetched = client.get(f"/tasks/{task_id}")
+    fetched_again = client.get(f"/tasks/{task_id}")
 
     assert fetched.status_code == 200
+    assert fetched_again.status_code == 200
     assert fetched.json()["result"]["status"]["state"] == "completed"
-    assert main_store.get_task(task_id).status == MainAgentTaskStatus.COMPLETED
+    task = main_store.get_task(task_id)
+    assert task.status == MainAgentTaskStatus.COMPLETED
+    assert task.output_message_id is not None
+    assert main_store.get_message(task.output_message_id).parts == [{"kind": "text", "text": "remote task answer"}]
+    artifacts = main_store.list_task_artifacts(task_id)
+    assert len(artifacts) == 1
+    assert artifacts[0].metadata["kind"] == "final_answer"
+    assert artifacts[0].metadata["source"] == "remote_agent"
+    assert artifacts[0].metadata["remoteArtifactId"] == "remote-final"
+    assert artifacts[0].parts == [{"kind": "text", "text": "remote task answer"}]
     assert [event.type for event in main_store.list_task_events(task_id)] == [
         "task_delegated",
+        "task_artifact_created",
         "remote_task_status_synced",
     ]
     delegation = main_store.get_delegated_task_by_local_task_id(task_id)
     assert delegation.status == "completed"
     assert delegation.metadata["remoteStatus"] == "completed"
-    assert remote_client.get_task_calls == [("agent-child-1", "remote-task-1")]
+    assert remote_client.get_task_calls == [("agent-child-1", "remote-task-1"), ("agent-child-1", "remote-task-1")]
     service.close()
     agent_store.close()
 

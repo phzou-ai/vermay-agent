@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Vermay Agent Workbench is a Python agent runtime for validating agent system behavior in realistic command-line and local API workflows.
+Vermay Agent is a Python agent runtime for validating agent system behavior in realistic command-line and local API workflows.
 
 The current implementation focuses on:
 

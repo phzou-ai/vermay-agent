@@ -12,15 +12,15 @@ from ..task_contract import ARTIFACT_TASK_EVENT_TYPES, INTERNAL_A2A_TASK_EVENT_T
 
 
 class A2ATaskState(str, Enum):
-    UNSPECIFIED = "TASK_STATE_UNSPECIFIED"
-    SUBMITTED = "TASK_STATE_SUBMITTED"
-    WORKING = "TASK_STATE_WORKING"
-    COMPLETED = "TASK_STATE_COMPLETED"
-    FAILED = "TASK_STATE_FAILED"
-    CANCELED = "TASK_STATE_CANCELED"
-    REJECTED = "TASK_STATE_REJECTED"
-    INPUT_REQUIRED = "TASK_STATE_INPUT_REQUIRED"
-    AUTH_REQUIRED = "TASK_STATE_AUTH_REQUIRED"
+    UNSPECIFIED = "unknown"
+    SUBMITTED = "submitted"
+    WORKING = "working"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELED = "canceled"
+    REJECTED = "rejected"
+    INPUT_REQUIRED = "input-required"
+    AUTH_REQUIRED = "auth-required"
 
 
 class A2AProjectionKind(str, Enum):
@@ -56,6 +56,17 @@ _STATUS_MAPPING = {
 _CANCELED_STATUSES = frozenset({"canceled", "cancelled"})
 _REJECTED_STATUSES = frozenset({"rejected"})
 _AUTH_REQUIRED_STATUSES = frozenset({"auth_required", "auth-required"})
+_LEGACY_PROTOCOL_STATES = {
+    "task_state_unspecified": A2ATaskState.UNSPECIFIED,
+    "task_state_submitted": A2ATaskState.SUBMITTED,
+    "task_state_working": A2ATaskState.WORKING,
+    "task_state_completed": A2ATaskState.COMPLETED,
+    "task_state_failed": A2ATaskState.FAILED,
+    "task_state_canceled": A2ATaskState.CANCELED,
+    "task_state_rejected": A2ATaskState.REJECTED,
+    "task_state_input_required": A2ATaskState.INPUT_REQUIRED,
+    "task_state_auth_required": A2ATaskState.AUTH_REQUIRED,
+}
 
 
 @dataclass(frozen=True)
@@ -170,6 +181,8 @@ def project_task_artifact_event(event: TaskEventRecord, *, artifact: TaskArtifac
 def map_task_status(status: object) -> A2ATaskState:
     if isinstance(status, str):
         normalized = status.strip().lower()
+        if normalized in _LEGACY_PROTOCOL_STATES:
+            return _LEGACY_PROTOCOL_STATES[normalized]
         if normalized in _CANCELED_STATUSES:
             return A2ATaskState.CANCELED
         if normalized in _REJECTED_STATUSES:
@@ -180,10 +193,7 @@ def map_task_status(status: object) -> A2ATaskState:
 
 
 def is_terminal_a2a_state(state: object) -> bool:
-    try:
-        normalized = state if isinstance(state, A2ATaskState) else A2ATaskState(str(state))
-    except ValueError:
-        return False
+    normalized = state if isinstance(state, A2ATaskState) else map_task_status(state)
     return normalized in TERMINAL_A2A_TASK_STATES
 
 
