@@ -73,6 +73,11 @@ class FakeLocalTaskRunner:
         )
 
 
+class FakeHoldingLocalTaskRunner(FakeLocalTaskRunner):
+    def run(self, messages: list[MessageRecord], *, thread_id: str) -> LocalTaskRunResult:
+        return LocalTaskRunResult(status=MainAgentTaskStatus.RUNNING)
+
+
 class FakeApprovalTaskRunner:
     def __init__(self) -> None:
         self.resume_calls = []
@@ -274,52 +279,62 @@ def test_a2a_routes_are_exposed_when_enabled(tmp_path):
     store.close()
 
 
-def test_create_app_dev_mock_main_agent_supports_a2a_message_task_get_and_subscribe(tmp_path, monkeypatch):
-    monkeypatch.setattr("vermay_agent.api.app.DEFAULT_AGENT_STORE_PATH", tmp_path / "agent.sqlite")
+def test_create_app_with_fake_main_agent_supports_a2a_message_task_get_and_subscribe(tmp_path):
+    agent_store = AgentStore(tmp_path / "agent.sqlite")
+    main_store = MainAgentStore(agent_store)
+    core = MainAgentCore(
+        store=main_store,
+        local_message_responder=FakeLocalMessageResponder(),
+        local_task_runner=FakeLocalTaskRunner(),
+    )
+    service = AgentService(
+        session_store=SessionStore(agent_store),
+        runtime_builder=lambda config: FakeRuntime([completed("unused")]),
+    )
+    client = TestClient(create_app(service=service, enable_a2a=True, main_agent_core=core))
 
-    with TestClient(create_app(enable_a2a=True, dev_mock_main_agent=True)) as client:
-        message_response = client.post(
-            "/message:send",
-            json={
-                "jsonrpc": "2.0",
-                "id": "req-message",
-                "method": "message/send",
-                "params": {
-                    "message": {
-                        "kind": "message",
-                        "role": "user",
-                        "messageId": "msg-dev-message",
-                        "parts": [{"kind": "text", "text": "hello mock"}],
-                    },
-                    "metadata": {"executionMode": "message"},
+    message_response = client.post(
+        "/message:send",
+        json={
+            "jsonrpc": "2.0",
+            "id": "req-message",
+            "method": "message/send",
+            "params": {
+                "message": {
+                    "kind": "message",
+                    "role": "user",
+                    "messageId": "msg-fake-message",
+                    "parts": [{"kind": "text", "text": "hello fake"}],
                 },
+                "metadata": {"executionMode": "message"},
             },
-        )
-        task_response = client.post(
-            "/message:send",
-            json={
-                "jsonrpc": "2.0",
-                "id": "req-task",
-                "method": "message/send",
-                "params": {
-                    "message": {
-                        "kind": "message",
-                        "role": "user",
-                        "messageId": "msg-dev-task",
-                        "parts": [{"kind": "text", "text": "run mock task"}],
-                    },
-                    "metadata": {"executionMode": "task"},
+        },
+    )
+    task_response = client.post(
+        "/message:send",
+        json={
+            "jsonrpc": "2.0",
+            "id": "req-task",
+            "method": "message/send",
+            "params": {
+                "message": {
+                    "kind": "message",
+                    "role": "user",
+                    "messageId": "msg-fake-task",
+                    "parts": [{"kind": "text", "text": "run fake task"}],
                 },
+                "metadata": {"executionMode": "task"},
             },
-        )
-        task_id = task_response.json()["result"]["id"]
-        fetched = client.get(f"/tasks/{task_id}")
-        subscribed = client.post(f"/tasks/{task_id}:subscribe")
+        },
+    )
+    task_id = task_response.json()["result"]["id"]
+    fetched = client.get(f"/tasks/{task_id}")
+    subscribed = client.post(f"/tasks/{task_id}:subscribe")
 
     assert message_response.status_code == 200
     assert message_response.json()["result"]["kind"] == "message"
     assert message_response.json()["result"]["parts"] == [
-        {"kind": "text", "text": "Dev mock response: hello mock"}
+        {"kind": "text", "text": "direct answer"}
     ]
     assert task_response.status_code == 200
     assert task_response.json()["result"]["kind"] == "task"
@@ -329,33 +344,45 @@ def test_create_app_dev_mock_main_agent_supports_a2a_message_task_get_and_subscr
     assert fetched.json()["result"]["status"]["state"] == "completed"
     assert subscribed.status_code == 200
     assert "event: artifact-update" in subscribed.text
-    assert "Dev mock task completed: run mock task" in subscribed.text
+    assert "task answer" in subscribed.text
+    service.close()
+    agent_store.close()
 
 
-def test_create_app_dev_mock_main_agent_can_hold_and_cancel_task(tmp_path, monkeypatch):
-    monkeypatch.setattr("vermay_agent.api.app.DEFAULT_AGENT_STORE_PATH", tmp_path / "agent.sqlite")
+def test_create_app_with_fake_main_agent_can_hold_and_cancel_task(tmp_path):
+    agent_store = AgentStore(tmp_path / "agent.sqlite")
+    main_store = MainAgentStore(agent_store)
+    core = MainAgentCore(
+        store=main_store,
+        local_message_responder=FakeLocalMessageResponder(),
+        local_task_runner=FakeHoldingLocalTaskRunner(),
+    )
+    service = AgentService(
+        session_store=SessionStore(agent_store),
+        runtime_builder=lambda config: FakeRuntime([completed("unused")]),
+    )
+    client = TestClient(create_app(service=service, enable_a2a=True, main_agent_core=core))
 
-    with TestClient(create_app(enable_a2a=True, dev_mock_main_agent=True)) as client:
-        task_response = client.post(
-            "/message:send",
-            json={
-                "jsonrpc": "2.0",
-                "id": "req-task",
-                "method": "message/send",
-                "params": {
-                    "message": {
-                        "kind": "message",
-                        "role": "user",
-                        "messageId": "msg-dev-task",
-                        "parts": [{"kind": "text", "text": "__dev_mock_hold_task__"}],
-                    },
-                    "metadata": {"executionMode": "task"},
+    task_response = client.post(
+        "/message:send",
+        json={
+            "jsonrpc": "2.0",
+            "id": "req-task",
+            "method": "message/send",
+            "params": {
+                "message": {
+                    "kind": "message",
+                    "role": "user",
+                    "messageId": "msg-fake-task",
+                    "parts": [{"kind": "text", "text": "hold fake task"}],
                 },
+                "metadata": {"executionMode": "task"},
             },
-        )
-        task_id = task_response.json()["result"]["id"]
-        canceled = client.post(f"/tasks/{task_id}:cancel", json={"reason": "operator requested"})
-        subscribed = client.post(f"/tasks/{task_id}:subscribe")
+        },
+    )
+    task_id = task_response.json()["result"]["id"]
+    canceled = client.post(f"/tasks/{task_id}:cancel", json={"reason": "operator requested"})
+    subscribed = client.post(f"/tasks/{task_id}:subscribe")
 
     assert task_response.status_code == 200
     assert task_response.json()["result"]["kind"] == "task"
@@ -364,6 +391,8 @@ def test_create_app_dev_mock_main_agent_can_hold_and_cancel_task(tmp_path, monke
     assert canceled.json()["result"]["status"]["state"] == "canceled"
     assert subscribed.status_code == 200
     assert "task_cancelled" in subscribed.text
+    service.close()
+    agent_store.close()
 
 
 def test_a2a_jsonrpc_message_send_can_return_main_agent_message_without_task(tmp_path):

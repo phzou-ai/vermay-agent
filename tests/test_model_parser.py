@@ -14,23 +14,24 @@ def test_parse_final_action():
 
 
 def test_parse_tool_call_action():
-    response = parse('{"action":"tool_call","name":"grep_logs","arguments":{"pattern":"error"}}')
+    response = parse('{"action":"tool_call","name":"ssh_kubectl_get","arguments":{"resource":"pods"}}')
 
-    assert response.content == "Calling tool grep_logs."
+    assert response.content == "Calling tool ssh_kubectl_get."
     assert response.tool_call is not None
-    assert response.tool_call.name == "grep_logs"
-    assert response.tool_call.arguments == {"pattern": "error"}
+    assert response.tool_call.name == "ssh_kubectl_get"
+    assert response.tool_call.arguments == {"resource": "pods"}
 
 
 def test_parse_embedded_tool_call_action():
     response = parse(
-        'Let me use the local mock data.\n\n{"action":"tool_call","name":"kubectl_get","arguments":{"resource":"pods"}}'
+        'I will read the cluster state.\n\n'
+        '{"action":"tool_call","name":"ssh_kubectl_get","arguments":{"resource":"pods","namespace":"all"}}'
     )
 
-    assert response.content == "Calling tool kubectl_get."
+    assert response.content == "Calling tool ssh_kubectl_get."
     assert response.tool_call is not None
-    assert response.tool_call.name == "kubectl_get"
-    assert response.tool_call.arguments == {"resource": "pods"}
+    assert response.tool_call.name == "ssh_kubectl_get"
+    assert response.tool_call.arguments == {"resource": "pods", "namespace": "all"}
 
 
 def test_parse_plain_markdown_as_final_answer():
@@ -76,10 +77,10 @@ def test_parse_tool_call_missing_name_is_invalid():
 
 
 def test_parse_tool_call_missing_arguments_defaults_to_empty_dict():
-    response = parse('{"action":"tool_call","name":"grep_logs"}')
+    response = parse('{"action":"tool_call","name":"ssh_kubectl_get"}')
 
     assert response.tool_call is not None
-    assert response.tool_call.name == "grep_logs"
+    assert response.tool_call.name == "ssh_kubectl_get"
     assert response.tool_call.arguments == {}
 
 

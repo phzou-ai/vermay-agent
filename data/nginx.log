@@ -1,5 +1,0 @@
-2026-05-22T09:00:01Z info nginx started
-2026-05-22T09:01:10Z info upstream api responded 200
-2026-05-22T09:02:45Z error upstream api timeout after 30s
-2026-05-22T09:03:12Z warn retrying upstream api
-2026-05-22T09:04:18Z error upstream api responded 502

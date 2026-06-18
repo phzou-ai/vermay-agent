@@ -175,16 +175,9 @@ curl http://127.0.0.1:8000/health
 
 The service is local-only by default and does not add authentication. Be careful before binding it outside localhost.
 
-## Deterministic Dev Mode
+## Backend Smoke Checks
 
-Use dev mock mode for protocol smoke tests and UI development when you want stable outputs without live model/tool variance:
-
-```bash
-source .venv/bin/activate
-vermay-agent serve --dev-mock-main-agent --host 127.0.0.1 --port 8000
-```
-
-Run backend smoke checks:
+Run backend smoke checks against a configured local server:
 
 ```bash
 scripts/a2a_dev_smoke.sh

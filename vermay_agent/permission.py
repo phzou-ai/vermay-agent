@@ -69,28 +69,16 @@ class PermissionGate:
 
 
 def _argument_sensitive_decision(tool_call: ToolCall, category: ToolCategory) -> PermissionDecision | None:
-    if category == ToolCategory.FILESYSTEM and tool_call.name == "read_file":
-        path = str(tool_call.arguments.get("path") or "")
-        if _is_sensitive_file_path(path):
-            return PermissionDecision(
-                allowed=False,
-                requires_approval=True,
-                reason=f"tool '{tool_call.name}' requires approval for sensitive path",
-                decision="interrupt_for_approval",
-                risk_level="medium",
-                approval_summary=f"Read sensitive local file: {path}",
-                safe_argument_preview={"path": path},
-                policy_tags=[category.value, ApprovalPolicy.ARGUMENT_SENSITIVE.value, "sensitive_path"],
-            )
-        return PermissionDecision(
-            allowed=True,
-            requires_approval=False,
-            reason="safe tool",
-            decision="allow",
-            risk_level="low",
-            policy_tags=[category.value, ApprovalPolicy.ARGUMENT_SENSITIVE.value],
-        )
-    return None
+    return PermissionDecision(
+        allowed=False,
+        requires_approval=True,
+        reason=f"tool '{tool_call.name}' requires argument-sensitive approval",
+        decision="interrupt_for_approval",
+        risk_level="medium",
+        approval_summary=f"Approve argument-sensitive tool call: {tool_call.name}",
+        safe_argument_preview=dict(tool_call.arguments),
+        policy_tags=[category.value, ApprovalPolicy.ARGUMENT_SENSITIVE.value],
+    )
 
 
 def _approval_summary(tool_call: ToolCall, metadata: ToolMetadata) -> str:
@@ -167,28 +155,6 @@ def _truncate(value: str, max_chars: int) -> str:
     if len(value) <= max_chars:
         return value
     return value[: max_chars - 3] + "..."
-
-
-def _is_sensitive_file_path(path: str) -> bool:
-    normalized = path.replace("\\", "/").strip().lower()
-    parts = [part for part in normalized.split("/") if part]
-    filename = parts[-1] if parts else normalized
-    sensitive_names = {
-        ".env",
-        ".env.local",
-        ".envrc",
-        "id_rsa",
-        "id_dsa",
-        "id_ecdsa",
-        "id_ed25519",
-        "known_hosts",
-    }
-    sensitive_terms = ("credential", "credentials", "secret", "secrets", "token", "tokens", "private_key")
-    if filename in sensitive_names:
-        return True
-    if filename.startswith(".env."):
-        return True
-    return any(term in normalized for term in sensitive_terms)
 
 
 def _approval_reason(tool_name: str, approval_policy: ApprovalPolicy) -> str:

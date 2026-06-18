@@ -10,6 +10,10 @@ class EmptyArgs(ToolArgs):
     pass
 
 
+class PathArgs(ToolArgs):
+    path: str
+
+
 def make_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
@@ -84,30 +88,29 @@ def test_permission_policy_denies_unknown_tool():
     assert "unknown_tool" in decision.policy_tags
 
 
-def test_permission_policy_allows_non_sensitive_read_file_path():
+def test_permission_policy_requires_approval_for_argument_sensitive_tool():
     registry = ToolRegistry()
-    register_devops_tools(registry)
+    registry.register(
+        structured_tool(
+            func=lambda path: path,
+            name="read_project_file",
+            description="Test-only argument-sensitive file read.",
+            args_schema=PathArgs,
+            dangerous=False,
+            approval_policy=ApprovalPolicy.ARGUMENT_SENSITIVE,
+        )
+    )
 
-    decision = PermissionPolicy(registry).check(ToolCall(name="read_file", arguments={"path": "README.md"}))
-
-    assert decision.allowed is True
-    assert decision.requires_approval is False
-    assert decision.decision == "allow"
-    assert "argument_sensitive" in decision.policy_tags
-
-
-def test_permission_policy_requires_approval_for_sensitive_read_file_path():
-    registry = ToolRegistry()
-    register_devops_tools(registry)
-
-    decision = PermissionPolicy(registry).check(ToolCall(name="read_file", arguments={"path": ".env.local"}))
+    decision = PermissionPolicy(registry).check(
+        ToolCall(name="read_project_file", arguments={"path": "README.md"})
+    )
 
     assert decision.allowed is False
     assert decision.requires_approval is True
     assert decision.decision == "interrupt_for_approval"
-    assert "sensitive path" in decision.reason
-    assert decision.safe_argument_preview == {"path": ".env.local"}
-    assert "sensitive_path" in decision.policy_tags
+    assert "argument-sensitive" in decision.reason
+    assert decision.safe_argument_preview == {"path": "README.md"}
+    assert "argument_sensitive" in decision.policy_tags
 
 
 def test_permission_policy_enriches_shell_approval_prompt():

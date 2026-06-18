@@ -44,12 +44,6 @@ The local server exposes the A2A-first main-agent service surface by default:
 vermay-agent serve
 ```
 
-Use deterministic development responders for UI and protocol smoke tests:
-
-```bash
-vermay-agent serve --dev-mock-main-agent
-```
-
 Use `--disable-a2a` only when you explicitly need management APIs without public A2A routes.
 
 Current public A2A service boundary:
@@ -79,13 +73,13 @@ POST /tasks/{task_id}:cancel
 
 Keep smoke coverage for both `/rpc` and path-style routes until a later cleanup milestone explicitly changes route behavior.
 
-Run the default smoke against one dev-mock main agent:
+Run the default smoke against one local main-agent server:
 
 ```bash
 scripts/a2a_dev_smoke.sh
 ```
 
-To include registered child-agent delegation, start a second dev-mock A2A server on another port and pass it as the child endpoint:
+To include registered child-agent delegation, start a second local A2A server on another port and pass it as the child endpoint:
 
 ```bash
 BASE_URL=http://127.0.0.1:8000 \

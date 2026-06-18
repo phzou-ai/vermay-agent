@@ -5,22 +5,9 @@ from vermay_agent.tooling import ToolArgs, structured_tool
 from vermay_agent.tool_metadata import ApprovalPolicy, ExecutionScope, SideEffectLevel, ToolCategory
 from pydantic import Field
 
-from .constants import KubectlDescribeResource, KubectlGetResource, MockKubectlGetResource
+from .constants import KubectlDescribeResource, KubectlGetResource
 from .dangerous import delete_resource, exec_shell, kubectl_apply
-from .mock import grep_logs, kubectl_get, read_file
 from .remote_kubernetes import ssh_kubectl_describe, ssh_kubectl_get
-
-
-class ReadFileArgs(ToolArgs):
-    path: str = Field(description="Path under the project root.")
-
-
-class GrepLogsArgs(ToolArgs):
-    pattern: str = Field(description="Simple substring such as 'error', 'timeout', or '502'.")
-
-
-class KubectlGetArgs(ToolArgs):
-    resource: MockKubectlGetResource = Field(description="Mock Kubernetes resource type.")
 
 
 class SshKubectlGetArgs(ToolArgs):
@@ -48,51 +35,6 @@ class DeleteResourceArgs(ToolArgs):
 
 
 def register_devops_tools(registry: ToolRegistry) -> None:
-    registry.register(
-        structured_tool(
-            func=read_file,
-            name="read_file",
-            description="Read a file under the project root.",
-            args_schema=ReadFileArgs,
-            dangerous=False,
-            category=ToolCategory.FILESYSTEM,
-            execution_scope=ExecutionScope.LOCAL,
-            read_only=True,
-            side_effect_level=SideEffectLevel.NONE,
-            approval_policy=ApprovalPolicy.ARGUMENT_SENSITIVE,
-            redaction_required=True,
-        )
-    )
-    registry.register(
-        structured_tool(
-            func=grep_logs,
-            name="grep_logs",
-            description="Search the mock nginx log for a simple substring. Use 'error' to find error lines.",
-            args_schema=GrepLogsArgs,
-            dangerous=False,
-            category=ToolCategory.LOGS,
-            execution_scope=ExecutionScope.LOCAL,
-            read_only=True,
-            side_effect_level=SideEffectLevel.NONE,
-            approval_policy=ApprovalPolicy.AUTO,
-            redaction_required=False,
-        )
-    )
-    registry.register(
-        structured_tool(
-            func=kubectl_get,
-            name="kubectl_get",
-            description="Read mock Kubernetes resource state from local sample data.",
-            args_schema=KubectlGetArgs,
-            dangerous=False,
-            category=ToolCategory.KUBERNETES,
-            execution_scope=ExecutionScope.LOCAL,
-            read_only=True,
-            side_effect_level=SideEffectLevel.NONE,
-            approval_policy=ApprovalPolicy.AUTO,
-            redaction_required=False,
-        )
-    )
     registry.register(
         structured_tool(
             func=ssh_kubectl_get,

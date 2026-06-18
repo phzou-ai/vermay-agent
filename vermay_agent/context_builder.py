@@ -25,7 +25,7 @@ class ContextBuilder:
                     "You are an operations assistant. Use tools when fresh runtime "
                     "state is needed. Do not claim that a tool action completed "
                     "unless a tool observation confirms it. For current or real "
-                    "Kubernetes cluster state, prefer SSH-backed tools over mock tools. "
+                    "Kubernetes cluster state, use SSH-backed read-only tools. "
                     "For weather or forecast questions, use weather_forecast."
                 ),
             )

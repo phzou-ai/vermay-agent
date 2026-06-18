@@ -9,7 +9,6 @@ from vermay_agent.tools.devops import register_devops_tools
 from vermay_agent.tools.devops.constants import (
     KUBECTL_DESCRIBE_RESOURCES,
     KUBECTL_GET_RESOURCES,
-    MOCK_KUBECTL_GET_RESOURCES,
 )
 from vermay_agent.tools.weather import register_weather_tools
 
@@ -152,11 +151,9 @@ def test_devops_tool_schemas_use_single_source_resource_enums():
     register_devops_tools(registry)
     schemas = {schema["name"]: schema for schema in registry.schemas()}
 
-    mock_resource_schema = schemas["kubectl_get"]["parameters"]["$defs"]["MockKubectlGetResource"]
     get_resource_schema = schemas["ssh_kubectl_get"]["parameters"]["$defs"]["KubectlGetResource"]
     describe_resource_schema = schemas["ssh_kubectl_describe"]["parameters"]["$defs"]["KubectlDescribeResource"]
 
-    assert mock_resource_schema["enum"] == MOCK_KUBECTL_GET_RESOURCES
     assert get_resource_schema["enum"] == KUBECTL_GET_RESOURCES
     assert describe_resource_schema["enum"] == KUBECTL_DESCRIBE_RESOURCES
 
@@ -164,14 +161,6 @@ def test_devops_tool_schemas_use_single_source_resource_enums():
 def test_devops_tools_have_explicit_metadata_classification():
     registry = ToolRegistry()
     register_devops_tools(registry)
-
-    read_file = registry.tool_metadata("read_file")
-    assert read_file.category == ToolCategory.FILESYSTEM
-    assert read_file.execution_scope == ExecutionScope.LOCAL
-    assert read_file.read_only is True
-    assert read_file.side_effect_level == SideEffectLevel.NONE
-    assert read_file.approval_policy == ApprovalPolicy.ARGUMENT_SENSITIVE
-    assert read_file.redaction_required is True
 
     ssh_get = registry.tool_metadata("ssh_kubectl_get")
     assert ssh_get.category == ToolCategory.KUBERNETES

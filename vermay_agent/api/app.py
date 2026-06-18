@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -13,8 +12,6 @@ from vermay_agent.errors import error_info_from_exception
 from vermay_agent.env_config import load_prefixed_env
 from vermay_agent.langgraph_runtime import build_model_client
 from vermay_agent.main_agent import (
-    DevMockLocalMessageResponder,
-    DevMockLocalTaskRunner,
     DirectA2ARemoteAgentClient,
     DirectLangGraphLocalTaskRunner,
     DirectModelLocalMessageResponder,
@@ -23,7 +20,6 @@ from vermay_agent.main_agent import (
     MainAgentCore,
     MainAgentStore,
     MessageRole,
-    build_dev_mock_runtime,
     build_router_json_client,
     fetch_agent_card,
 )
@@ -53,39 +49,31 @@ def create_app(
     *,
     enable_a2a: bool = False,
     main_agent_core: MainAgentCore | None = None,
-    dev_mock_main_agent: bool | None = None,
 ) -> FastAPI:
     owned_store = None
     owned_service = service
     owned_task_runner = None
     owns_service = owned_service is None
-    use_dev_mock_main_agent = _dev_mock_main_agent_enabled(dev_mock_main_agent)
     if owned_service is None:
         owned_store = AgentStore(DEFAULT_AGENT_STORE_PATH)
         default_config = RuntimeFactoryConfig(show_progress=False)
         owned_service = AgentService(
             session_store=SessionStore(owned_store),
             default_config=default_config,
-            runtime_builder=build_dev_mock_runtime if use_dev_mock_main_agent else build_runtime,
+            runtime_builder=build_runtime,
             lifecycle_observer=TraceLifecycleObserver(TraceLogger(default_config.trace_path)),
         )
         if main_agent_core is None:
-            if use_dev_mock_main_agent:
-                local_message_responder = DevMockLocalMessageResponder()
-                owned_task_runner = DevMockLocalTaskRunner()
-            else:
-                active_model = resolve_model_selection(config_path=DEFAULT_MODEL_CONFIG_PATH)
-                local_message_responder = DirectModelLocalMessageResponder(build_model_client(active_model))
-                owned_task_runner = DirectLangGraphLocalTaskRunner(build_runtime(default_config))
-            router = None
-            if not use_dev_mock_main_agent:
-                router_model = _router_model_selection()
-                router = DefaultMainAgentRouter(
-                    router_model=DirectModelRouterModelClient(
-                        raw_json_client=build_router_json_client(router_model.config),
-                        model_name=router_model.name,
-                    )
+            active_model = resolve_model_selection(config_path=DEFAULT_MODEL_CONFIG_PATH)
+            local_message_responder = DirectModelLocalMessageResponder(build_model_client(active_model))
+            owned_task_runner = DirectLangGraphLocalTaskRunner(build_runtime(default_config))
+            router_model = _router_model_selection()
+            router = DefaultMainAgentRouter(
+                router_model=DirectModelRouterModelClient(
+                    raw_json_client=build_router_json_client(router_model.config),
+                    model_name=router_model.name,
                 )
+            )
             main_agent_core = MainAgentCore(
                 store=MainAgentStore(owned_store),
                 local_message_responder=local_message_responder,
@@ -291,12 +279,6 @@ def create_app(
     return app
 
 
-def _dev_mock_main_agent_enabled(value: bool | None) -> bool:
-    if value is not None:
-        return value
-    return _truthy_env(os.environ.get("VERMAY_AGENT_DEV_MOCK_MAIN_AGENT"))
-
-
 def _router_model_name(config_path: Path = DEFAULT_MODEL_CONFIG_PATH) -> str:
     return _router_model_selection(config_path=config_path).name
 
@@ -327,12 +309,6 @@ def _model_selection_to_dict(selection: NamedModelSelection) -> dict[str, Any]:
 def _optional_option_string(options: dict[str, Any], key: str) -> str | None:
     value = options.get(key)
     return value if isinstance(value, str) else None
-
-
-def _truthy_env(value: str | None) -> bool:
-    if value is None:
-        return False
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _http_exception(exc: Exception) -> HTTPException:

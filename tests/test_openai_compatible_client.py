@@ -135,8 +135,9 @@ def test_openai_compatible_client_parses_embedded_json_tool_action(monkeypatch):
                     {
                         "message": {
                             "content": (
-                                "Let me use the local mock data.\n\n"
-                                '{"action":"tool_call","name":"kubectl_get","arguments":{"resource":"pods"}}'
+                                "I will read the cluster state.\n\n"
+                                '{"action":"tool_call","name":"ssh_kubectl_get",'
+                                '"arguments":{"resource":"pods","namespace":"all"}}'
                             )
                         }
                     }
@@ -147,9 +148,9 @@ def test_openai_compatible_client_parses_embedded_json_tool_action(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
     client = OpenAICompatibleModelClient(model="qwen", base_url="http://localhost:8000/v1")
-    response = client.invoke([Message(role="user", content="check k8s")], tools=[{"name": "kubectl_get"}])
+    response = client.invoke([Message(role="user", content="check k8s")], tools=[{"name": "ssh_kubectl_get"}])
 
-    assert response.content == "Calling tool kubectl_get."
+    assert response.content == "Calling tool ssh_kubectl_get."
     assert response.tool_call is not None
-    assert response.tool_call.name == "kubectl_get"
-    assert response.tool_call.arguments == {"resource": "pods"}
+    assert response.tool_call.name == "ssh_kubectl_get"
+    assert response.tool_call.arguments == {"resource": "pods", "namespace": "all"}

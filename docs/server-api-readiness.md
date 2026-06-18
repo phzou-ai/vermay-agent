@@ -12,12 +12,6 @@ Start the server:
 vermay-agent serve
 ```
 
-Use deterministic development responders for protocol smoke tests and the Web UI:
-
-```bash
-vermay-agent serve --dev-mock-main-agent
-```
-
 `serve` exposes the A2A-first service boundary by default. Use `--disable-a2a` only when you explicitly need management APIs without public A2A routes.
 
 Default bind address:
