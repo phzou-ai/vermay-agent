@@ -112,13 +112,13 @@ sequenceDiagram
   M-->>C: completed or failed task status
 ```
 
-## UI Preview
+## Web UI
 
 The current Web UI is a chat-first Agent Console: sessions on the left, the conversation transcript and composer in the center, and an inspector for route diagnostics, task events, agent cards, child agents, and payloads on the right.
 
 ![Agent Console UI preview](docs/assets/agent-console-preview.png)
 
-The UI is currently documented as part of the product direction and will be moved into this repository in a later milestone. This repository currently contains the Python backend, CLI, runtime, storage, and A2A service.
+The frontend lives in `web/` as a standalone Next.js app. It is intentionally colocated with the backend so A2A contracts, task events, approval flows, and inspector behavior can evolve together.
 
 ## Install
 
@@ -174,6 +174,24 @@ curl http://127.0.0.1:8000/health
 ```
 
 The service is local-only by default and does not add authentication. Be careful before binding it outside localhost.
+
+## Start The Web UI
+
+In another terminal:
+
+```bash
+cd web
+pnpm install
+pnpm dev
+```
+
+The web app defaults to `http://localhost:3000/agent` and proxies backend calls to `http://127.0.0.1:8000`.
+
+Override the backend URL when needed:
+
+```bash
+VERMAY_AGENT_API_BASE=http://127.0.0.1:8000 pnpm dev
+```
 
 ## Backend Smoke Checks
 

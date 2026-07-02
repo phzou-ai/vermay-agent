@@ -1,0 +1,38 @@
+# Vermay Agent Web
+
+This directory contains the standalone Next.js frontend for Vermay Agent. It is
+kept in the same repository as the backend so the A2A routes, session/task
+contracts, inspector UI, and approval workflow can evolve together.
+
+## Development
+
+Start the backend from the repository root:
+
+```bash
+vermay-agent serve --enable-a2a
+```
+
+Start the web UI from this directory:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+The frontend proxies to `http://127.0.0.1:8000` by default. Override the backend
+base URL with:
+
+```bash
+VERMAY_AGENT_API_BASE=http://127.0.0.1:8000 pnpm dev
+```
+
+## Checks
+
+```bash
+pnpm typecheck
+pnpm build
+pnpm test:e2e
+```
+
+The web app is intentionally agent-specific. Reusable UI primitives should only
+be extracted later if another non-agent product actually needs them.

@@ -21,3 +21,10 @@ data/skill_proposals/*.md
 traces/*.jsonl
 traces/*.sqlite
 !traces/.gitkeep
+
+# Web frontend artifacts
+web/node_modules/
+web/.next/
+web/out/
+web/test-results/
+web/playwright-report/
