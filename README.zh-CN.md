@@ -2,18 +2,18 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Vermay Agent is a local main-agent runtime built around the A2A protocol. It exposes a main agent that can:
+Vermay Agent 是一个基于 A2A 协议的本地主 Agent runtime。它提供一个主 agent，可以：
 
-- answer lightweight requests directly as messages;
-- run local LangGraph-backed tasks with events, artifacts, approval interrupts, cancellation, and resume;
-- route suitable requests to registered child A2A agents;
-- provide a browser workbench for session transcripts, route diagnostics, task events, payload inspection, and approval controls.
+- 以 message 方式直接回答轻量请求；
+- 运行由 LangGraph 支撑的本地 task，并支持 events、artifacts、审批中断、取消和恢复；
+- 将合适的请求路由到已注册的子 A2A agent；
+- 提供浏览器 workbench，用于查看会话记录、路由诊断、任务事件、payload 和审批操作。
 
-Clients communicate with the agent through A2A JSON-RPC over the `/rpc` endpoint.
+客户端通过 `/rpc` endpoint 使用 A2A JSON-RPC 与 agent 通信。
 
-## Architecture
+## 架构
 
-The project keeps protocol, task state, and runtime execution as separate layers.
+项目将 protocol、task state 和 runtime execution 分成独立层。
 
 ```mermaid
 flowchart TB
@@ -52,20 +52,20 @@ flowchart TB
   GRAPH --> CKPT
 ```
 
-Key identifiers:
+关键标识：
 
-| Concept | Meaning |
+| 概念 | 含义 |
 | --- | --- |
-| `context_id` / `session_id` | Long-lived conversation/work context. |
-| `message_id` | User or agent message identity inside a context. |
-| `task_id` | The A2A `Task.id`: the external identity of one unit of work and its lifecycle. A2A clients and the Web UI use it to get, cancel, subscribe to, or resume that task. |
-| `thread_id` | The LangGraph runtime `thread_id`: the checkpoint key for that task's graph execution. Vermay Agent maps `task_id` to this value when it starts or resumes LangGraph; it is not an A2A task identifier or a conversation/session identifier. |
+| `context_id` / `session_id` | 长生命周期的对话或工作上下文。 |
+| `message_id` | context 中的用户或 agent 消息标识。 |
+| `task_id` | A2A `Task.id`：一个工作单元及其生命周期的外部标识。A2A client 和 Web UI 使用它获取、取消、订阅或恢复该 task。 |
+| `thread_id` | LangGraph runtime 的 `thread_id`：该 task 图执行的 checkpoint key。Vermay Agent 在启动或恢复 LangGraph 时将 `task_id` 映射到它；它既不是 A2A task 标识，也不是对话或 session 标识。 |
 
-One session can contain many tasks, and each resumable task has its own `thread_id`. A runtime thread may appear in local CLI or inspector output for diagnosis, but A2A clients should identify and resume work with `task_id`. For an approval interrupt, `MainAgentCore` resolves `task_id` to `thread_id`, then resumes the checkpointed LangGraph execution.
+一个 session 可以包含多个 task，每个可恢复的 task 都有自己的 `thread_id`。为了诊断，runtime thread 可能出现在本地 CLI 或 inspector 输出中；但 A2A client 应始终使用 `task_id` 标识和恢复工作。发生 approval interrupt 时，`MainAgentCore` 先将 `task_id` 解析为 `thread_id`，再恢复 checkpointed LangGraph execution。
 
-### Task Execution Flow
+### Task 执行流程
 
-Normal execution starts from a control surface, becomes a lifecycle-managed task, and then advances through the LangGraph runtime. Public task records and event streams stay outside the raw graph state.
+正常执行从一个控制入口开始，转换成带生命周期管理的 task，然后进入 LangGraph runtime。公开的 task record 和 event stream 保持在原始 graph state 之外。
 
 ```mermaid
 sequenceDiagram
@@ -85,9 +85,9 @@ sequenceDiagram
   M-->>C: A2A message, task snapshot, or stream event
 ```
 
-### Approval Resume Flow
+### Approval Resume 流程
 
-Approval interrupts keep `task_id` and `thread_id` separate. The caller resumes the externally visible `task_id`; the main-agent layer looks up the internal checkpoint thread and resumes the runtime.
+Approval interrupt 会保持 `task_id` 和 `thread_id` 分离。调用方恢复外部可见的 `task_id`；main-agent 层查找内部 checkpoint thread 并恢复 runtime。
 
 ```mermaid
 sequenceDiagram
@@ -116,13 +116,13 @@ sequenceDiagram
 
 ## Web UI
 
-The Web UI is a chat-first Agent Console: sessions are on the left, the conversation transcript and composer are in the center, and the inspector for route diagnostics, task events, agent cards, child agents, and payloads is on the right.
+当前 Web UI 是一个 chat-first 的 Agent Console：左侧是 sessions，中间是对话记录和输入框，右侧是 inspector，用于查看路由诊断、任务事件、agent cards、child agents 和 payloads。
 
 ![Agent Console UI preview](docs/assets/agent-console-preview.png)
 
-The frontend lives in `web/` as a standalone Next.js app. It is colocated with the backend so A2A contracts, task events, approval flows, and inspector behavior can evolve together.
+前端位于 `web/`，是一个独立的 Next.js app。它和后端放在同一个仓库中，便于 A2A contracts、task events、approval flows 和 inspector behavior 一起演进。
 
-## Install
+## 安装
 
 ```bash
 python3 -m venv .venv
@@ -131,55 +131,55 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-Python 3.11 or newer is required.
+需要 Python 3.11 或更高版本。
 
-## CLI Quick Start
+## CLI 快速开始
 
 ```bash
 vermay-agent "weather forecast for Beijing"
 ```
 
-The CLI prints progress to stderr and the final answer to stdout.
+CLI 会把 progress 输出到 stderr，把最终回答输出到 stdout。
 
-Disable progress output:
+关闭 progress 输出：
 
 ```bash
 vermay-agent "weather forecast for Beijing" --no-progress
 ```
 
-The `mini-agent` command is also installed as an alias.
+`mini-agent` 命令也会作为 alias 安装。
 
-## Start The Backend
+## 启动后端
 
 ```bash
 source .venv/bin/activate
 vermay-agent serve
 ```
 
-Defaults:
+默认配置：
 
 ```text
 host: 127.0.0.1
 port: 8000
 ```
 
-`serve` exposes the A2A service by default. Disable A2A only when you want to run the local management APIs without the agent communication endpoint:
+`serve` 默认暴露 A2A 服务。只有当你只想运行本地 management APIs，且不需要 agent 通信入口时，才禁用 A2A：
 
 ```bash
 vermay-agent serve --disable-a2a
 ```
 
-Health check:
+健康检查：
 
 ```bash
 curl http://127.0.0.1:8000/health
 ```
 
-The service is local-only by default and does not add authentication. Be careful before binding it outside localhost.
+服务默认只绑定本机，并且不添加认证。绑定到 localhost 之外前需要谨慎。
 
-## Start The Web UI
+## 启动 Web UI
 
-In another terminal:
+在另一个 terminal 中：
 
 ```bash
 cd web
@@ -187,27 +187,27 @@ pnpm install
 pnpm dev
 ```
 
-The web app defaults to `http://localhost:3000/agent` and proxies backend calls to `http://127.0.0.1:8000`.
+Web app 默认运行在 `http://localhost:3000/agent`，并将后端请求代理到 `http://127.0.0.1:8000`。
 
-Override the backend URL when needed:
+需要时可以覆盖后端 URL：
 
 ```bash
 VERMAY_AGENT_API_BASE=http://127.0.0.1:8000 pnpm dev
 ```
 
-## Backend Smoke Checks
+## 后端 Smoke Checks
 
-Run backend smoke checks against a configured local server:
+针对已配置的本地 server 运行后端 smoke checks：
 
 ```bash
 scripts/a2a_dev_smoke.sh
 ```
 
-## A2A JSON-RPC Examples
+## A2A JSON-RPC 示例
 
-The `/rpc` endpoint accepts A2A JSON-RPC requests.
+`/rpc` endpoint 接收 A2A JSON-RPC 请求。
 
-Send a direct message:
+发送 direct message：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/rpc \
@@ -228,7 +228,7 @@ curl -X POST http://127.0.0.1:8000/rpc \
   }'
 ```
 
-Run a task:
+运行 task：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/rpc \
@@ -249,7 +249,7 @@ curl -X POST http://127.0.0.1:8000/rpc \
   }'
 ```
 
-Use auto routing:
+使用 auto routing：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/rpc \
@@ -270,7 +270,7 @@ curl -X POST http://127.0.0.1:8000/rpc \
   }'
 ```
 
-Inspect a task:
+查看 task：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/rpc \
@@ -278,7 +278,7 @@ curl -X POST http://127.0.0.1:8000/rpc \
   -d '{"jsonrpc":"2.0","id":"req-4","method":"GetTask","params":{"id":"<task-id>"}}'
 ```
 
-Cancel a task:
+取消 task：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/rpc \
@@ -286,9 +286,9 @@ curl -X POST http://127.0.0.1:8000/rpc \
   -d '{"jsonrpc":"2.0","id":"req-5","method":"CancelTask","params":{"id":"<task-id>","reason":"operator canceled"}}'
 ```
 
-## Model Configuration
+## 模型配置
 
-Models are configured in `config/models.json`.
+模型在 `config/models.json` 中配置。
 
 ```json
 {
@@ -315,27 +315,27 @@ Models are configured in `config/models.json`.
 }
 ```
 
-`primary_model` is used for normal message and task execution.
+`primary_model` 用于普通 message 和 task execution。
 
-`router_model` is used by `executionMode=auto` to classify whether a request should become:
+`router_model` 由 `executionMode=auto` 使用，用于判断请求应该进入：
 
-- `local_message`;
-- `local_task`;
-- `remote_agent`.
+- `local_message`；
+- `local_task`；
+- `remote_agent`。
 
-If `router_model` is omitted, the router uses `primary_model`. `VERMAY_AGENT_ROUTER_MODEL` can temporarily override the configured router model for local experiments.
+如果省略 `router_model`，router 会使用 `primary_model`。`VERMAY_AGENT_ROUTER_MODEL` 可以在本地实验时临时覆盖配置中的 router model。
 
-Use another configured model from the CLI:
+从 CLI 使用另一个已配置模型：
 
 ```bash
 vermay-agent "weather forecast for Beijing" --model local_ollama
 ```
 
-## MCP Tools, Resources, And Prompts
+## MCP Tools、Resources 和 Prompts
 
-MCP server configuration lives in `config/mcp_servers.json`.
+MCP server 配置位于 `config/mcp_servers.json`。
 
-List configured capabilities:
+列出已配置能力：
 
 ```bash
 vermay-agent mcp list-servers
@@ -344,42 +344,42 @@ vermay-agent mcp list-resources --server k8s
 vermay-agent mcp list-prompts --server k8s
 ```
 
-Configured MCP servers are inactive by default during agent runs. Select servers explicitly:
+在 agent run 期间，已配置 MCP servers 默认不启用。需要显式选择 server：
 
 ```bash
 vermay-agent "check k8s status" --mcp-server k8s
 vermay-agent "debug phzou-core service" --mcp-server k8s --mcp-prompt 'k8s-service-health-check?service=phzou-core&namespace=default'
 ```
 
-Selected MCP tools are wrapped as LangChain `StructuredTool` instances with namespaced names such as `mcp__k8s__kubectl_get`. MCP tools require approval by default unless the server or tool is marked read-only.
+选中的 MCP tools 会被包装成 LangChain `StructuredTool`，并使用类似 `mcp__k8s__kubectl_get` 的命名空间名称。除非 server 或 tool 被标记为 read-only，否则 MCP tools 默认需要 approval。
 
-The local Kubernetes MCP example is under `examples/mcp_servers/k8s/`. It uses the `VERMAY_AGENT_SSH_*` environment configuration.
+本地 Kubernetes MCP 示例位于 `examples/mcp_servers/k8s/`。它使用 `VERMAY_AGENT_SSH_*` 环境配置。
 
-## Approval And Resume
+## Approval 和 Resume
 
-Dangerous tools pause execution and require explicit approval.
+危险工具会暂停执行，并要求显式 approval。
 
-In the Web UI, an input-required task renders approval controls directly in the transcript.
+在 Web UI 中，input-required task 会直接在 transcript 中渲染 approval controls。
 
-In an interactive terminal, approval is prompted automatically:
+在交互式 terminal 中，approval 会自动提示：
 
 ```bash
 vermay-agent "delete pod nginx-5869d7778c-687rb"
 ```
 
-Low-level checkpoint resume is still available through the CLI:
+低层 checkpoint resume 仍可通过 CLI 使用：
 
 ```bash
 vermay-agent --thread-id <thread-id> --resume-approval true --approval-reason "approved by operator"
 ```
 
-This CLI command is a runtime-level operation: it resumes a LangGraph checkpoint directly by `thread_id`. A2A and Web UI flows operate at the protocol level and resume externally visible work by `task_id`.
+这条 CLI 命令属于 runtime-level 操作：它通过 `thread_id` 直接恢复 LangGraph checkpoint。A2A 和 Web UI flows 工作在 protocol level，通过外部可见的 `task_id` 恢复。
 
-LangGraph checkpoints are stored under `data/checkpoints/`.
+LangGraph checkpoints 存储在 `data/checkpoints/`。
 
 ## Memory
 
-Memory is explicit and stored locally in SQLite.
+Memory 是显式写入的，并存储在本地 SQLite。
 
 ```bash
 vermay-agent memory add "Prefer read-only Kubernetes inspection first." --tag k8s --tag preference
@@ -387,11 +387,11 @@ vermay-agent memory list
 vermay-agent memory disable 1
 ```
 
-Memory metadata is stored in `data/agent.sqlite`.
+Memory metadata 存储在 `data/agent.sqlite`。
 
 ## Skills
 
-Skills are markdown files under `skills/` with front matter:
+Skills 是位于 `skills/` 下的 markdown 文件，包含 front matter：
 
 ```markdown
 ---
@@ -404,7 +404,7 @@ version: 0.1.0
 Prefer read-only inspection before proposing a fix.
 ```
 
-Common commands:
+常用命令：
 
 ```bash
 vermay-agent skills list
@@ -413,8 +413,8 @@ vermay-agent skills propose-from-trace --trace traces/latest.jsonl
 vermay-agent skills approve <proposal-id>
 ```
 
-Approved skills live in `skills/`. Generated proposals live in `data/skill_proposals/`.
+已批准的 skills 位于 `skills/`。生成的 proposals 位于 `data/skill_proposals/`。
 
 ## License
 
-Vermay Agent is released under the [MIT License](LICENSE).
+Vermay Agent 基于 [MIT License](LICENSE) 发布。

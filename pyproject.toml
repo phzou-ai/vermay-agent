@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "vermay-agent-workbench"
 version = "0.1.0"
 description = "An experimental local workbench for task-based, resumable agents."
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "rich>=13.7",

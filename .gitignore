@@ -26,5 +26,6 @@ traces/*.sqlite
 web/node_modules/
 web/.next/
 web/out/
+web/tsconfig.tsbuildinfo
 web/test-results/
 web/playwright-report/
